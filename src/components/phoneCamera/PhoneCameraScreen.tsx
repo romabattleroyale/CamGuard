@@ -226,7 +226,22 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
           return;
         }
 
-        // Initialize WebRTC and Signaling
+        // Join and validate the control-center session before sending any WebRTC messages.
+        const joinResponse = await apiFetch('/api/signaling/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: activeSessionId,
+            pin: activePin,
+            cameraInfo: { resolution: '1280x720', facing: 'environment' },
+          }),
+        });
+        if (!joinResponse.ok) {
+          const joinData = await joinResponse.json().catch(() => ({}));
+          throw new Error(joinData.error || 'Sessione non valida o scaduta. Genera un nuovo QR dal Centro di controllo.');
+        }
+
+        // Initialize WebRTC and Signaling only after the server accepts the pairing.
         const signaling = new SignalingClient(activeSessionId, 'camera', activePin || pin);
         signalingRef.current = signaling;
 
