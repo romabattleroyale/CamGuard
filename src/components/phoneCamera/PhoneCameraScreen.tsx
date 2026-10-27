@@ -99,36 +99,30 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         throw new Error('MEDIA_UNAVAILABLE');
       }
 
-      let stream: MediaStream;
+      // Request video first, so microphone denial does not prevent surveillance video.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: facing },
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 30, max: 30 },
+        },
+        audio: false,
+      });
+
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: facing },
-            width: { ideal: 1280, max: 1920 },
-            height: { ideal: 720, max: 1080 },
-            frameRate: { ideal: 30, max: 30 },
-          },
+        const audioStream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
           },
+          video: false,
         });
-      } catch (firstError: any) {
-        // Some devices cannot provide camera and microphone simultaneously.
-        // Try video-only so a camera stream can still start, and report audio separately.
-        if (firstError?.name === 'NotAllowedError' || firstError?.name === 'SecurityError') {
-          throw firstError;
-        }
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: facing },
-            width: { ideal: 1280, max: 1920 },
-            height: { ideal: 720, max: 1080 },
-          },
-          audio: false,
-        });
-        console.warn('Fotocamera attiva senza microfono; le funzioni audio bidirezionali restano disabilitate.');
+        audioStream.getAudioTracks().forEach((track) => stream.addTrack(track));
+      } catch (audioError) {
+        // Video remains usable if the user denies microphone permission.
+        console.warn('Microphone unavailable; continuing with video only.', audioError);
       }
 
       localStreamRef.current = stream;
