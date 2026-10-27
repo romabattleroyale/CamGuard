@@ -452,11 +452,29 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
   };
 
   // Copy connection pairing link
-  const copyLink = () => {
-    const pairUrl = `${window.location.origin}/?pair=camera&session=${sessionId}&pin=${pin}`;
-    navigator.clipboard.writeText(pairUrl);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
+  const copyLink = async () => {
+    const pairUrl = `${window.location.origin}/#camera&session=${encodeURIComponent(sessionId)}&pin=${encodeURIComponent(pin)}`;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(pairUrl);
+      } else {
+        const input = document.createElement('textarea');
+        input.value = pairUrl;
+        input.setAttribute('readonly', '');
+        input.style.position = 'fixed';
+        input.style.opacity = '0';
+        document.body.appendChild(input);
+        input.select();
+        const copied = document.execCommand('copy');
+        input.remove();
+        if (!copied) throw new Error('Copia non supportata dal dispositivo');
+      }
+      setCopiedLink(true);
+      window.setTimeout(() => setCopiedLink(false), 2000);
+    } catch (error) {
+      console.error('Impossibile copiare il link di abbinamento', error);
+      setCopiedLink(false);
+    }
   };
 
   // -------------------------------------------------------------
