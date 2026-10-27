@@ -246,7 +246,7 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         });
 
         // Initialize WebRTC and Signaling
-        const signaling = new SignalingClient(activeSessionId, 'camera');
+        const signaling = new SignalingClient(activeSessionId, 'camera', activePin || pin);
         signalingRef.current = signaling;
 
         const pc = new RTCPeerConnection(createPeerConnectionConfig());
