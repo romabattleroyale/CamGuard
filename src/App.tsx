@@ -909,11 +909,11 @@ export default function App() {
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
               className="space-y-5 max-w-4xl mx-auto"
             >
-              {/* Header Eventi con Pulsante di Test Interattivo */}
+              {/* Real security event timeline */}
               <div className="p-4 rounded-2xl bg-[#101C2B] border border-[#24364D] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-bold text-[#F4F8FF] tracking-tight">Eventi &amp; Allarmi</h2>
-                  <p className="text-xs text-[#99B0CA]">Timeline in tempo reale con registrazione istantanea</p>
+                  <p className="text-xs text-[#99B0CA]">Qui compaiono soltanto eventi rilevati da una sorgente reale.</p>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
@@ -959,7 +959,14 @@ export default function App() {
                   Oggi, {new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </span>
 
-                {/* Timeline Container with Connected Vertical Line */}
+                {filteredEvents.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[#24364D] bg-[#101C2B] p-8 text-center">
+                    <Activity className="mx-auto mb-3 h-8 w-8 text-[#64748B]" />
+                    <h3 className="text-sm font-bold text-white">Nessun evento reale registrato</h3>
+                    <p className="mt-2 text-xs text-[#99B0CA]">Gli eventi appariranno qui quando una telecamera collegata rileverà movimento, una disconnessione o un allarme.</p>
+                  </div>
+                ) : (
+                /* Timeline Container with Connected Vertical Line */
                 <div className="relative pl-6 space-y-3 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-[#24364D]">
                   <AnimatePresence initial={false}>
                     {filteredEvents.map((evt, index) => (
@@ -1027,6 +1034,7 @@ export default function App() {
                     ))}
                   </AnimatePresence>
                 </div>
+                )}
               </div>
             </motion.div>
           )}
