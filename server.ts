@@ -182,8 +182,12 @@ app.post('/api/signaling/:sessionId/message', (req: Request, res: Response) => {
   }
 
   const target = sender === 'viewer' ? 'camera' : 'viewer';
+  const requestedId = typeof req.body?.id === 'string' ? req.body.id : '';
+  const safeId = /^msg_[a-zA-Z0-9_-]{1,100}$/.test(requestedId)
+    ? requestedId
+    : `msg_${crypto.randomUUID()}`;
   const message: SignalingMessage = {
-    id: `msg_${crypto.randomUUID()}`,
+    id: safeId,
     sender,
     target,
     type: type as SignalingMessage['type'],
