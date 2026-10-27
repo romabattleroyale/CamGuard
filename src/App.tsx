@@ -50,7 +50,7 @@ import { WelcomeScreen } from './components/welcome/WelcomeScreen';
 import { DailyRecapModal } from './components/dashboard/DailyRecapModal';
 import { playChimeSound, playSirenSound, stopSirenSound } from './utils/audio';
 import { ASSETS } from './assets/images';
-import { apiFetch } from './services/api';
+import { apiFetch, getSignalingBaseUrl } from './services/api';
 
 const STORAGE_KEY = 'camguard_saved_cameras_v2';
 const FAVORITES_KEY = 'camguard_favorite_cameras_v1';
@@ -147,9 +147,7 @@ export default function App() {
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [selectedCamera, setSelectedCamera] = useState<CameraDevice | null>(null);
   const [lanInfo, setLanInfo] = useState<{ localIp: string; lanUrl: string } | null>(null);
-  const [signalingServerUrl, setSignalingServerUrl] = useState<string>(() => {
-    try { return localStorage.getItem('camguard_signaling_server_url') || ''; } catch { return ''; }
-  });
+  const [signalingServerUrl, setSignalingServerUrl] = useState<string>(() => getSignalingBaseUrl());
   const [serverCheckStatus, setServerCheckStatus] = useState<'idle' | 'checking' | 'online' | 'error'>('idle');
   const [serverCheckMessage, setServerCheckMessage] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -179,7 +177,7 @@ export default function App() {
   };
 
   const testSignalingServer = async () => {
-    const baseUrl = normalizeSignalingServerUrl(signalingServerUrl) || window.location.origin;
+    const baseUrl = normalizeSignalingServerUrl(signalingServerUrl) || getSignalingBaseUrl();
     setServerCheckStatus('checking');
     setServerCheckMessage('Verifica della connessione...');
     try {
