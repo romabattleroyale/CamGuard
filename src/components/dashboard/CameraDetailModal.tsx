@@ -136,8 +136,60 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
   };
 
   const toggleRecording = () => {
-    setIsRecording(!isRecording);
-    playChimeSound();
+    if (camera.type !== 'phone' || !videoRef.current || !videoRef.current.srcObject) {
+      console.warn('Recording unavailable: no live media stream is attached to this camera.');
+      return;
+    }
+
+    const stream = videoRef.current.srcObject as MediaStream;
+    if (!stream.getVideoTracks().some((track) => track.readyState === 'live')) {
+      console.warn('Recording unavailable: camera video track is not live.');
+      return;
+    }
+
+    // Browser recording is local to the current session; persistence/export is a separate feature.
+    try {
+      const supportedMimeType = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+      ].find((mime) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(mime));
+      if (typeof MediaRecorder === 'undefined' || !supportedMimeType) {
+        console.warn('This WebView does not support MediaRecorder with a compatible format.');
+        return;
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType: supportedMimeType });
+      const chunks: BlobPart[] = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunks.push(event.data);
+      };
+      recorder.onstop = () => {
+        if (!chunks.length) return;
+        const blob = new Blob(chunks, { type: supportedMimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `camguard-${camera.id}-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      };
+
+      if (!isRecording) {
+        recorder.start(1000);
+        (window as any).__camguardActiveRecorder = recorder;
+        setIsRecording(true);
+        playChimeSound();
+      } else {
+        const activeRecorder = (window as any).__camguardActiveRecorder as MediaRecorder | undefined;
+        if (activeRecorder?.state === 'recording') activeRecorder.stop();
+        (window as any).__camguardActiveRecorder = undefined;
+        setIsRecording(false);
+        playChimeSound();
+      }
+    } catch (error) {
+      console.error('Unable to start/stop local recording', error);
+    }
   };
 
   const handleStartIntercom = async () => {
