@@ -14,7 +14,7 @@ workflows:
           npm install --no-audit --no-fund --legacy-peer-deps
       - name: Install Capacitor 8
         script: |
-          npm install --no-save --no-audit --no-fund @capacitor/core@^8 @capacitor/cli@^8 @capacitor/android@^8
+          npm install --no-save --legacy-peer-deps --no-audit --no-fund @capacitor/core@^8 @capacitor/cli@^8 @capacitor/android@^8
       - name: Build web app
         script: |
           npm run build
