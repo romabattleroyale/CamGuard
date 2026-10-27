@@ -145,9 +145,21 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
 
       if (peerConnectionRef.current) {
         const senders = peerConnectionRef.current.getSenders();
-        const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
+        const videoTrack = stream.getVideoTracks()[0];
+        const audioTrack = stream.getAudioTracks()[0];
+        const videoSender = senders.find((sender) => sender.track?.kind === 'video');
+        const audioSender = senders.find((sender) => sender.track?.kind === 'audio');
+
+        // Replace existing tracks after a permission retry / camera flip.
         if (videoSender && videoTrack) {
-          videoSender.replaceTrack(videoTrack);
+          await videoSender.replaceTrack(videoTrack);
+        } else if (!videoSender && videoTrack) {
+          peerConnectionRef.current.addTrack(videoTrack, stream);
+        }
+        if (audioSender && audioTrack) {
+          await audioSender.replaceTrack(audioTrack);
+        } else if (!audioSender && audioTrack) {
+          peerConnectionRef.current.addTrack(audioTrack, stream);
         }
       }
 
