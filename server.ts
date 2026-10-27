@@ -163,11 +163,11 @@ app.post('/api/signaling/create', (req: Request, res: Response) => {
 
 // Join an existing session (initiated by Camera phone)
 app.post('/api/signaling/join', (req: Request, res: Response) => {
-  const { sessionId, pin, cameraInfo } = req.body;
-  let targetSessionId = sessionId;
+  const { sessionId, pin, cameraInfo } = req.body ?? {};
+  let targetSessionId = typeof sessionId === 'string' ? sessionId : '';
 
-  if (!targetSessionId && pin) {
-    targetSessionId = pinIndex.get(String(pin).trim());
+  if (!targetSessionId && typeof pin === 'string') {
+    targetSessionId = pinIndex.get(pin.trim()) || '';
   }
 
   if (!targetSessionId || !sessions.has(targetSessionId)) {
@@ -176,6 +176,12 @@ app.post('/api/signaling/join', (req: Request, res: Response) => {
   }
 
   const session = sessions.get(targetSessionId)!;
+  const suppliedPin = typeof pin === 'string' ? pin.trim() : '';
+  if (!suppliedPin || suppliedPin !== session.pin) {
+    res.status(403).json({ error: 'PIN di abbinamento non valido' });
+    return;
+  }
+
   session.lastPing = Date.now();
   if (cameraInfo) {
     session.cameraInfo = { ...session.cameraInfo, ...cameraInfo };
