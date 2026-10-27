@@ -908,18 +908,6 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* Pulsante microinterazione: simula arrivo di un nuovo evento per testare l'animazione */}
-                  <motion.button
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.94 }}
-                    onClick={handleSimulateNewEvent}
-                    className="px-3 py-1.5 rounded-xl bg-[#36C5FF]/15 hover:bg-[#36C5FF]/25 text-[#36C5FF] border border-[#36C5FF]/30 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-                    title="Simula l'arrivo immediato di un nuovo evento"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Simula evento</span>
-                  </motion.button>
-
                   {/* Filter Pills */}
                   <div className="flex items-center gap-1.5 text-xs">
                     <button
