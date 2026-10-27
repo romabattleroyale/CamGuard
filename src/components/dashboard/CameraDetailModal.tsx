@@ -76,7 +76,7 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
     if (camera.type !== 'phone' || !camera.sessionId) return;
 
     setIsBuffering(true);
-    const signaling = new SignalingClient(camera.sessionId, 'viewer');
+    const signaling = new SignalingClient(camera.sessionId, 'viewer', camera.pin || '');
     signalingRef.current = signaling;
 
     const pc = new RTCPeerConnection(createPeerConnectionConfig());
