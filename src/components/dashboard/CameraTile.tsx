@@ -92,6 +92,11 @@ export const CameraTile: React.FC<CameraTileProps> = ({
     }
 
     setIsLive(false);
+    // A persisted "online" flag is historical only. Until actual media arrives,
+    // report this phone camera as offline so the dashboard cannot imply a live feed.
+    if (camera.status !== 'offline') {
+      onUpdate({ ...camera, status: 'offline', lastSeen: Date.now() });
+    }
 
     let isSubscribed = true;
     const signaling = new SignalingClient(camera.sessionId, 'viewer', camera.pin || '');
@@ -99,6 +104,15 @@ export const CameraTile: React.FC<CameraTileProps> = ({
 
     const pc = new RTCPeerConnection(createPeerConnectionConfig());
     peerConnectionRef.current = pc;
+    // ICE candidates can arrive in the same polling batch as the offer/answer.
+    // Buffer them until the remote SDP is installed instead of dropping them. 
+    const pendingIceCandidates: RTCIceCandidateInit[] = [];
+    const flushPendingIceCandidates = async () => {
+      while (pendingIceCandidates.length > 0 && pc.remoteDescription) {
+        const candidate = pendingIceCandidates.shift();
+        if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    };
 
     pc.ontrack = (event) => {
       if (event.streams && event.streams[0] && videoRef.current) {
@@ -136,6 +150,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
       if (msg.type === 'offer') {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+          await flushPendingIceCandidates();
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           await signaling.sendMessage('answer', answer);
@@ -146,13 +161,18 @@ export const CameraTile: React.FC<CameraTileProps> = ({
       } else if (msg.type === 'answer') {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+          await flushPendingIceCandidates();
           // An SDP answer is not proof that the media track is flowing.
         } catch (err) {
           console.error('Failed to handle answer', err);
         }
       } else if (msg.type === 'candidate' && msg.payload) {
         try {
-          await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+          } else {
+            pendingIceCandidates.push(msg.payload as RTCIceCandidateInit);
+          }
         } catch (err) {
           console.warn('ICE candidate error', err);
         }

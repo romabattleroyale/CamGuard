@@ -251,6 +251,15 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
 
         const pc = new RTCPeerConnection(createPeerConnectionConfig());
         peerConnectionRef.current = pc;
+        // The viewer's ICE candidates may arrive before its SDP answer due to polling.
+        // Queue them until setRemoteDescription succeeds, then apply them in order.
+        const pendingIceCandidates: RTCIceCandidateInit[] = [];
+        const flushPendingIceCandidates = async () => {
+          while (pendingIceCandidates.length > 0 && pc.remoteDescription) {
+            const candidate = pendingIceCandidates.shift();
+            if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          }
+        };
 
         if (localStreamRef.current) {
           localStreamRef.current.getTracks().forEach((track) => {
@@ -293,11 +302,16 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
           } else if (msg.type === 'answer') {
             if (pc.signalingState !== 'stable') {
               await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+              await flushPendingIceCandidates();
             }
             setViewerCount(1);
           } else if (msg.type === 'candidate' && msg.payload) {
             try {
-              await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+              if (pc.remoteDescription) {
+                await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+              } else {
+                pendingIceCandidates.push(msg.payload as RTCIceCandidateInit);
+              }
             } catch (err) {
               console.warn('ICE error', err);
             }
