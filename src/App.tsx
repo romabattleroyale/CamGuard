@@ -280,9 +280,52 @@ export default function App() {
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [selectedCamera, setSelectedCamera] = useState<CameraDevice | null>(null);
   const [lanInfo, setLanInfo] = useState<{ localIp: string; lanUrl: string } | null>(null);
+  const [signalingServerUrl, setSignalingServerUrl] = useState<string>(() => {
+    try { return localStorage.getItem('camguard_signaling_server_url') || ''; } catch { return ''; }
+  });
+  const [serverCheckStatus, setServerCheckStatus] = useState<'idle' | 'checking' | 'online' | 'error'>('idle');
+  const [serverCheckMessage, setServerCheckMessage] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const currentHour = new Date().getHours();
+
+  const normalizeSignalingServerUrl = (value: string) => value.trim().replace(/\\/+$/, '');
+
+  const saveSignalingServerUrl = () => {
+    const normalized = normalizeSignalingServerUrl(signalingServerUrl);
+    if (normalized && !/^https?:\\/\\//i.test(normalized)) {
+      setServerCheckStatus('error');
+      setServerCheckMessage('Inserisci un indirizzo completo che inizi con https:// o http://.');
+      return;
+    }
+    try {
+      if (normalized) localStorage.setItem('camguard_signaling_server_url', normalized);
+      else localStorage.removeItem('camguard_signaling_server_url');
+      setSignalingServerUrl(normalized);
+      setServerCheckStatus('idle');
+      setServerCheckMessage('Indirizzo salvato. Le nuove connessioni useranno questo server.');
+      window.location.reload();
+    } catch {
+      setServerCheckStatus('error');
+      setServerCheckMessage('Impossibile salvare l’indirizzo sul dispositivo.');
+    }
+  };
+
+  const testSignalingServer = async () => {
+    const baseUrl = normalizeSignalingServerUrl(signalingServerUrl) || window.location.origin;
+    setServerCheckStatus('checking');
+    setServerCheckMessage('Verifica della connessione...');
+    try {
+      const response = await fetch(`${baseUrl}/api/lan-info`, { method: 'GET' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const info = await response.json();
+      setServerCheckStatus('online');
+      setServerCheckMessage(`Server raggiungibile · ${info.localIp || new URL(baseUrl).host}`);
+    } catch (error) {
+      setServerCheckStatus('error');
+      setServerCheckMessage('Server non raggiungibile da questo dispositivo. Controlla URL, rete e certificato HTTPS.');
+    }
+  };
 
   // Persist cameras
   const saveCameras = (newCameras: CameraDevice[]) => {
@@ -1170,6 +1213,34 @@ export default function App() {
               <div className="p-4 rounded-2xl bg-[#101C2B] border border-[#24364D]">
                 <h2 className="text-base font-bold text-[#F4F8FF] tracking-tight">Impostazioni CamGest</h2>
                 <p className="text-xs text-[#99B0CA]">Configurazione nodo locale e informazioni di sistema</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#101C2B] border border-[#24364D] space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-[#F4F8FF]">
+                  <Wifi className="w-4 h-4 text-[#36C5FF]" />
+                  <span>Server di segnalazione</span>
+                </div>
+                <p className="text-xs text-[#99B0CA] leading-relaxed">
+                  Per collegare due telefoni, inserisci l'indirizzo HTTPS del server CamGuard che ospita le API di segnalazione. Lascia vuoto solo se il server è servito dalla stessa origine dell'app.
+                </p>
+                <input
+                  type="url"
+                  inputMode="url"
+                  value={signalingServerUrl}
+                  onChange={(event) => setSignalingServerUrl(event.target.value)}
+                  placeholder="https://tuo-server-camguard.example"
+                  className="w-full rounded-xl bg-[#080E18] border border-[#24364D] px-3 py-3 text-sm text-[#F4F8FF] placeholder:text-[#64748B] focus:outline-none focus:border-[#36C5FF]"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                <div className="flex gap-2">
+                  <button onClick={saveSignalingServerUrl} className="flex-1 rounded-xl bg-[#36C5FF] px-3 py-2.5 text-xs font-bold text-[#080E18]">Salva server</button>
+                  <button onClick={testSignalingServer} disabled={serverCheckStatus === 'checking'} className="rounded-xl border border-[#24364D] px-3 py-2.5 text-xs font-bold text-[#F4F8FF] disabled:opacity-50">{serverCheckStatus === 'checking' ? 'Verifico…' : 'Test connessione'}</button>
+                </div>
+                {serverCheckMessage && (
+                  <p className={`text-xs ${serverCheckStatus === 'online' ? 'text-[#45D7B0]' : serverCheckStatus === 'error' ? 'text-[#FF6577]' : 'text-[#99B0CA]'}`}>{serverCheckMessage}</p>
+                )}
               </div>
 
               <div className="p-4 rounded-2xl bg-[#101C2B] border border-[#24364D] space-y-3">
