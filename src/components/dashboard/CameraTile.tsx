@@ -338,11 +338,14 @@ export const CameraTile: React.FC<CameraTileProps> = ({
                 {/* Subtle CCTV digital surveillance vignette */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
 
-                {/* Live CCTV timestamp & codec overlay */}
-                <div className="absolute bottom-2.5 left-2.5 z-10 font-mono text-[10px] text-white/80 bg-black/55 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/10 flex items-center gap-2">
-                  <span className="text-[#45D7B0] font-bold">25 FPS</span>
-                  <span>•</span>
-                  <span>{camera.ip ? `${camera.ip}:${camera.port || 554}` : 'LAN P2P'}</span>
+                {/* Explicitly identify placeholder feeds instead of implying a real live stream. */}
+                <div className="absolute bottom-2.5 left-2.5 z-10 font-mono text-[10px] text-white/90 bg-black/70 backdrop-blur-md px-2 py-1 rounded-md border border-white/10 flex items-center gap-2">
+                  {camera.isSimulated || camera.type === 'ip' ? (
+                    <span className="text-amber-300 font-bold">ANTEPRIMA DEMO · NON LIVE</span>
+                  ) : (
+                    <span className="text-[#45D7B0] font-bold">FLUSSO COLLEGATO</span>
+                  )}
+                  {camera.ip && <><span>•</span><span>{camera.ip}:{camera.port || 554}</span></>}
                 </div>
               </div>
             )}
