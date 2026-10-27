@@ -80,10 +80,8 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
     signalingRef.current = signaling;
 
     const pc = new RTCPeerConnection(createPeerConnectionConfig());
-    // Match the phone offer's media order (video, then audio).
-    // Keep the audio m-line negotiated from the start so Talk never needs
-    // to create a competing offer against the phone's initial offer.
-    pc.addTransceiver('video', { direction: 'recvonly' });
+    // The phone's offer already declares video. Only pre-create the bidirectional
+    // audio section needed for intercom; do not duplicate the incoming video m-line.
     pc.addTransceiver('audio', { direction: 'sendrecv' });
     peerConnectionRef.current = pc;
 
@@ -150,6 +148,9 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
     signaling.onMessage(async (msg) => {
       try {
         if (msg.type === 'offer') {
+          if (pc.signalingState === 'have-local-offer') {
+            await pc.setLocalDescription({ type: 'rollback' });
+          }
           await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
           await flushPendingIceCandidates();
           const answer = await pc.createAnswer();
