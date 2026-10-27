@@ -5,6 +5,7 @@ workflows:
     instance_type: mac_mini_m2
     environment:
       node: v22.16.0
+      java: 21
     scripts:
       - name: Clean npm cache
         script: |
@@ -31,6 +32,7 @@ workflows:
           echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
       - name: Build debug APK
         script: |
+          java -version
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
