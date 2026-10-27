@@ -36,6 +36,7 @@ interface CameraTileProps {
   camera: CameraDevice;
   index: number;
   privacyMode?: boolean;
+  suspendStream?: boolean;
   isFavorite?: boolean;
   onToggleFavorite?: (id: string) => void;
   onSelect: (camera: CameraDevice) => void;
@@ -48,6 +49,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
   camera,
   index,
   privacyMode = false,
+  suspendStream = false,
   isFavorite = false,
   onToggleFavorite,
   onSelect,
@@ -86,7 +88,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
 
   // WebRTC Setup for Phone Camera
   useEffect(() => {
-    if (camera.type !== 'phone' || !camera.sessionId) {
+    if (suspendStream || camera.type !== 'phone' || !camera.sessionId) {
       setIsLive(false);
       return;
     }
@@ -204,7 +206,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
         localMicStreamRef.current.getTracks().forEach((t) => t.stop());
       }
     };
-  }, [camera.sessionId, camera.type]);
+  }, [camera.sessionId, camera.type, suspendStream]);
 
   const handleManualReconnect = async (e: React.MouseEvent) => {
     e.stopPropagation();
