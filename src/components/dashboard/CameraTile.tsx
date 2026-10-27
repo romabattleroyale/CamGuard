@@ -105,6 +105,9 @@ export const CameraTile: React.FC<CameraTileProps> = ({
     signalingRef.current = signaling;
 
     const pc = new RTCPeerConnection(createPeerConnectionConfig());
+    // Explicitly request incoming video before applying the phone's offer.
+    // This avoids WebViews negotiating a connected peer without a receiving video transceiver.
+    pc.addTransceiver('video', { direction: 'recvonly' });
     peerConnectionRef.current = pc;
     // ICE candidates can arrive in the same polling batch as the offer/answer.
     // Buffer them until the remote SDP is installed instead of dropping them.
