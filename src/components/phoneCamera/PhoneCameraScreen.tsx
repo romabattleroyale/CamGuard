@@ -59,6 +59,7 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
   const [isBlackScreen, setIsBlackScreen] = useState<boolean>(false);
   const [isSirenActive, setIsSirenActive] = useState<boolean>(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [permissionRetryCount, setPermissionRetryCount] = useState(0);
 
   // Motion Detection
   const [motionActive, setMotionActive] = useState<boolean>(true);
@@ -354,7 +355,7 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         peerConnectionRef.current.close();
       }
     };
-  }, []);
+  }, [permissionRetryCount]);
 
   // Torch control
   const toggleTorch = useCallback(async (state?: boolean) => {
@@ -662,7 +663,13 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
             <h2 className="text-xl font-bold text-white">Accesso Richiesto</h2>
             <p className="text-sm text-[#94A3B8] max-w-md">{permissionError}</p>
             <button
-              onClick={() => initLocalStream('environment')}
+              onClick={async () => {
+                const stream = await initLocalStream('environment');
+                if (stream) {
+                  // Re-run session setup after the first permission request has failed.
+                  setPermissionRetryCount((count) => count + 1);
+                }
+              }}
               className="px-6 py-3 bg-[#4FC3F7] text-black font-extrabold rounded-2xl text-xs uppercase tracking-wider shadow-lg"
             >
               Riprova Permessi
