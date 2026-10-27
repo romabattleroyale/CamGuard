@@ -41,7 +41,12 @@ workflows:
           if missing:
               s = s.replace(anchor, "\n    " + "\n    ".join(missing) + "\n\n    " + anchor, 1)
               p.write_text(s)
-          print(p.read_text())
+          final_xml = p.read_text()
+          required = ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"]
+          missing_after = [permission for permission in required if permission not in final_xml]
+          if missing_after:
+              raise SystemExit("Missing Android permissions: " + ", ".join(missing_after))
+          print("Verified camera and microphone permissions in AndroidManifest.xml")
           PY
       - name: Sync web app to Android
         script: |
