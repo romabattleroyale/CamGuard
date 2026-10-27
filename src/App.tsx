@@ -38,7 +38,11 @@ import {
   User,
   Calendar,
   Grid,
-  List
+  List,
+  QrCode,
+  Copy,
+  Check,
+  Loader2
 } from 'lucide-react';
 import { CameraDevice } from './types/camera';
 import { CameraTile } from './components/dashboard/CameraTile';
@@ -52,6 +56,7 @@ import { DailyRecapModal } from './components/dashboard/DailyRecapModal';
 import { playChimeSound, playSirenSound, stopSirenSound } from './utils/audio';
 import { ASSETS } from './assets/images';
 import { apiFetch, getSignalingBaseUrl } from './services/api';
+import { generateQrDataUrl } from './utils/qr';
 
 const STORAGE_KEY = 'camguard_saved_cameras_v2';
 const FAVORITES_KEY = 'camguard_favorite_cameras_v1';
@@ -152,6 +157,36 @@ export default function App() {
   const [serverCheckStatus, setServerCheckStatus] = useState<'idle' | 'checking' | 'online' | 'error'>('idle');
   const [serverCheckMessage, setServerCheckMessage] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pairingOpen, setPairingOpen] = useState(false);
+  const [pairingLoading, setPairingLoading] = useState(false);
+  const [pairingSessionId, setPairingSessionId] = useState('');
+  const [pairingPin, setPairingPin] = useState('');
+  const [pairingQr, setPairingQr] = useState('');
+  const [pairingError, setPairingError] = useState('');
+  const [pairingCopied, setPairingCopied] = useState(false);
+
+  const createPhoneCameraPairing = async () => {
+    setPairingLoading(true);
+    setPairingError('');
+    try {
+      const response = await apiFetch('/api/signaling/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'CamGest Centro di controllo' }) });
+      if (!response.ok) throw new Error('Il server non è riuscito a creare una sessione. Riprova.');
+      const data = await response.json();
+      if (!data.sessionId || !data.pin) throw new Error('Il server non ha restituito sessione e PIN.');
+      const session = String(data.sessionId), code = String(data.pin);
+      const url = `${window.location.origin}${window.location.pathname}#camera&session=${encodeURIComponent(session)}&pin=${encodeURIComponent(code)}`;
+      const qr = await generateQrDataUrl(url);
+      setPairingSessionId(session); setPairingPin(code); setPairingQr(qr); setPairingCopied(false);
+    } catch (error) {
+      setPairingError(error instanceof Error ? error.message : 'Errore durante la creazione del collegamento.');
+    } finally { setPairingLoading(false); }
+  };
+  const openPhoneCameraPairing = () => { setPairingOpen(true); if (!pairingSessionId) void createPhoneCameraPairing(); };
+  const copyPhonePairingLink = async () => {
+    const url = `${window.location.origin}${window.location.pathname}#camera&session=${encodeURIComponent(pairingSessionId)}&pin=${encodeURIComponent(pairingPin)}`;
+    try { await navigator.clipboard.writeText(url); setPairingCopied(true); }
+    catch { setPairingError('Copia automatica non disponibile: usa il QR oppure inserisci sessione e PIN manualmente.'); }
+  };
 
   const currentHour = new Date().getHours();
 
@@ -575,6 +610,12 @@ export default function App() {
                   </div>
                 </div>
               </motion.div>
+
+              <motion.button type="button" onClick={openPhoneCameraPairing} whileTap={{ scale: 0.98 }} className="w-full rounded-2xl border border-[#36C5FF]/35 bg-gradient-to-r from-[#10283A] to-[#101C2B] p-4 flex items-center gap-3 text-left shadow-lg">
+                <span className="w-12 h-12 rounded-xl bg-[#36C5FF]/15 text-[#36C5FF] flex items-center justify-center"><QrCode className="w-6 h-6" /></span>
+                <span className="flex-1"><strong className="block text-white">Collega una telecamera telefono</strong><span className="text-xs text-[#99B0CA]">Mostra il QR e il PIN per il secondo dispositivo</span></span>
+                <QrCode className="w-5 h-5 text-[#36C5FF]" />
+              </motion.button>
 
               {/* PRIVACY MODE TOGGLE CARD (Stagger 2) */}
               <motion.div
@@ -1212,6 +1253,26 @@ export default function App() {
       {/* Add Camera Modal */}
       <AnimatePresence>
         {isAddModalOpen && (
+          {pairingOpen && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+              <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} className="relative w-full max-w-md rounded-3xl border border-[#24364D] bg-[#101C2B] p-5 text-center space-y-4 shadow-2xl">
+                <button onClick={() => setPairingOpen(false)} className="absolute right-3 top-3 rounded-lg p-2 text-[#99B0CA]" aria-label="Chiudi"><X className="w-5 h-5" /></button>
+                <div className="mx-auto w-12 h-12 rounded-2xl bg-[#36C5FF]/15 text-[#36C5FF] flex items-center justify-center"><QrCode className="w-6 h-6" /></div>
+                <h2 className="text-xl font-black text-white">Associa una telecamera</h2>
+                <p className="text-sm text-[#99B0CA]">Scansiona questo QR dal secondo telefono: si aprirà direttamente la modalità fotocamera. In alternativa inserisci sessione e PIN sul telefono fotocamera.</p>
+                {pairingLoading ? <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-[#36C5FF] w-8 h-8" /></div> : pairingQr ? <img src={pairingQr} alt="QR per collegare la fotocamera" className="mx-auto w-52 h-52 rounded-xl bg-white p-2" /> : null}
+                {pairingSessionId && <div className="rounded-xl border border-[#24364D] bg-[#080E18] p-3 text-left space-y-2">
+                  <div><span className="block text-[10px] uppercase tracking-widest text-[#99B0CA]">Codice sessione</span><code className="block break-all text-sm text-white select-all">{pairingSessionId}</code></div>
+                  <div><span className="block text-[10px] uppercase tracking-widest text-[#99B0CA]">PIN del Centro di controllo</span><code className="text-xl font-black tracking-[0.25em] text-[#36C5FF] select-all">{pairingPin}</code></div>
+                </div>}
+                {pairingError && <p role="alert" className="rounded-xl bg-rose-500/10 p-3 text-sm text-rose-200">{pairingError}</p>}
+                <div className="flex gap-2">
+                  <button onClick={() => void createPhoneCameraPairing()} disabled={pairingLoading} className="flex-1 rounded-xl border border-[#24364D] py-3 text-sm font-bold text-white disabled:opacity-50">Nuovo codice</button>
+                  <button onClick={() => void copyPhonePairingLink()} disabled={!pairingSessionId} className="flex-1 rounded-xl bg-[#36C5FF] py-3 text-sm font-extrabold text-[#080E18] disabled:opacity-50"><span className="inline-flex items-center gap-2">{pairingCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{pairingCopied ? 'Copiato' : 'Copia link'}</span></button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
           <AddCameraModal
             isOpen={isAddModalOpen}
             onClose={() => setIsAddModalOpen(false)}
