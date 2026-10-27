@@ -5,11 +5,13 @@ import { ASSETS } from '../../assets/images';
 
 interface WelcomeScreenProps {
   onSelectCameraMode: () => void;
+  onSelectViewerMode: () => void;
   onSelectControlCenter: () => void;
 }
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onSelectCameraMode,
+  onSelectViewerMode,
   onSelectControlCenter,
 }) => {
   return (
@@ -186,6 +188,20 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </p>
           </div>
         </motion.div>
+        <button
+          type="button"
+          onClick={onSelectViewerMode}
+          className="w-full flex items-center gap-3 rounded-2xl border border-[#4FC3F7]/30 bg-[#101A27]/95 px-5 py-4 text-left shadow-lg active:scale-[0.99] transition"
+        >
+          <div className="w-11 h-11 rounded-xl bg-[#4FC3F7]/15 flex items-center justify-center text-[#4FC3F7]">
+            <Smartphone className="w-5 h-5" />
+          </div>
+          <div className="flex-1">
+            <span className="block font-extrabold text-white">Collega un’altra telecamera</span>
+            <span className="block text-xs text-[#94A3B8] mt-1">Viewer · scansiona il QR o inserisci sessione e PIN</span>
+          </div>
+          <ArrowRight className="w-4 h-4 text-[#4FC3F7]" />
+        </button>
       </div>
 
       {/* Subtle Footer Note */}

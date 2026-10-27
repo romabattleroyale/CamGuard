@@ -38,7 +38,11 @@ import {
   User,
   Calendar,
   Grid,
-  List
+  List,
+  QrCode,
+  Copy,
+  Check,
+  Loader2
 } from 'lucide-react';
 import { CameraDevice } from './types/camera';
 import { CameraTile } from './components/dashboard/CameraTile';
@@ -46,10 +50,13 @@ import { CameraDetailModal } from './components/dashboard/CameraDetailModal';
 import { HouseMapTab } from './components/dashboard/HouseMapTab';
 import { AddCameraModal } from './components/modals/AddCameraModal';
 import { PhoneCameraScreen } from './components/phoneCamera/PhoneCameraScreen';
+import { PhoneCameraViewer } from './components/phoneCamera/PhoneCameraViewer';
 import { WelcomeScreen } from './components/welcome/WelcomeScreen';
 import { DailyRecapModal } from './components/dashboard/DailyRecapModal';
 import { playChimeSound, playSirenSound, stopSirenSound } from './utils/audio';
 import { ASSETS } from './assets/images';
+import { apiFetch, getSignalingBaseUrl } from './services/api';
+import { generateQrDataUrl } from './utils/qr';
 
 const STORAGE_KEY = 'camguard_saved_cameras_v2';
 const FAVORITES_KEY = 'camguard_favorite_cameras_v1';
@@ -70,157 +77,12 @@ export interface SecurityEvent {
   roomImage: string;
 }
 
-const SAMPLE_EVENTS: SecurityEvent[] = [
-  {
-    id: 'evt_1',
-    cameraId: 'ip_tapo_c200',
-    cameraName: 'Salotto - Tapo C200',
-    type: 'motion',
-    severity: 'info',
-    description: 'Movimento rilevato',
-    timeAgo: '10:32',
-    timestamp: Date.now() - 240000,
-    roomImage: ASSETS.roomLivingRoom,
-  },
-  {
-    id: 'evt_2',
-    cameraId: 'ip_giardino_c310',
-    cameraName: 'Giardino - Tapo C310',
-    type: 'person',
-    severity: 'info',
-    description: 'Persona rilevata',
-    timeAgo: '10:12',
-    timestamp: Date.now() - 720000,
-    roomImage: ASSETS.roomGardenPatio,
-  },
-  {
-    id: 'evt_3',
-    cameraId: 'ip_retro_garage',
-    cameraName: 'Garage - Reolink E1',
-    type: 'motion',
-    severity: 'info',
-    description: 'Movimento rilevato',
-    timeAgo: '09:48',
-    timestamp: Date.now() - 1440000,
-    roomImage: ASSETS.roomModernGarage,
-  },
-  {
-    id: 'evt_4',
-    cameraId: 'ip_ezviz_c6n',
-    cameraName: 'Ingresso - EZVIZ C6N',
-    type: 'reconnection',
-    severity: 'info',
-    description: 'Connessione ristabilita',
-    timeAgo: '08:21',
-    timestamp: Date.now() - 3600000 * 2,
-    roomImage: ASSETS.roomHallwayEntrance,
-  },
-  {
-    id: 'evt_5',
-    cameraId: 'ip_giardino_c310',
-    cameraName: 'Giardino - Tapo C310',
-    type: 'alarm',
-    severity: 'alert',
-    description: 'Allarme perimetro',
-    timeAgo: '07:55',
-    timestamp: Date.now() - 3600000 * 3,
-    roomImage: ASSETS.roomGardenPatio,
-  },
-  {
-    id: 'evt_6',
-    cameraId: 'ip_tapo_c200',
-    cameraName: 'Salotto - Tapo C200',
-    type: 'motion',
-    severity: 'info',
-    description: 'Movimento rilevato',
-    timeAgo: '06:30',
-    timestamp: Date.now() - 3600000 * 4,
-    roomImage: ASSETS.roomLivingRoom,
-  },
-  {
-    id: 'evt_7',
-    cameraId: 'ip_retro_garage',
-    cameraName: 'Garage - Reolink E1',
-    type: 'disconnection',
-    severity: 'warning',
-    description: 'Nessun segnale RTSP',
-    timeAgo: '08:14',
-    timestamp: Date.now() - 3600000 * 8,
-    roomImage: ASSETS.roomModernGarage,
-  },
-  {
-    id: 'evt_8',
-    cameraId: 'ip_giardino_c310',
-    cameraName: 'Giardino - Tapo C310',
-    type: 'motion',
-    severity: 'info',
-    description: 'Movimento rilevato',
-    timeAgo: '01:02',
-    timestamp: Date.now() - 3600000 * 12,
-    roomImage: ASSETS.roomGardenPatio,
-  },
-];
-
-const DEFAULT_CAMERAS: CameraDevice[] = [
-  {
-    id: 'ip_tapo_c200',
-    name: 'Salotto - Tapo C200',
-    type: 'ip',
-    brand: 'tapo',
-    status: 'online',
-    isIndoor: true,
-    ip: '192.168.1.120',
-    port: 554,
-    username: 'admin',
-    streamPath: '/stream1',
-    isSimulated: true,
-    coverImage: ASSETS.roomLivingRoom,
-    ptzSupport: true,
-    currentPan: 0,
-    currentTilt: 0,
-    createdAt: Date.now() - 3600000 * 24,
-  },
-  {
-    id: 'ip_giardino_c310',
-    name: 'Giardino - Tapo C310',
-    type: 'ip',
-    brand: 'tapo',
-    status: 'online',
-    isIndoor: false,
-    ip: '192.168.1.188',
-    port: 554,
-    username: 'admin',
-    streamPath: '/stream1',
-    isSimulated: true,
-    coverImage: ASSETS.roomGardenPatio,
-    ptzSupport: false,
-    currentPan: 0,
-    currentTilt: 0,
-    createdAt: Date.now() - 3600000 * 6,
-  },
-  {
-    id: 'ip_retro_garage',
-    name: 'Garage - Reolink E1',
-    type: 'ip',
-    brand: 'reolink',
-    status: 'online',
-    isIndoor: true,
-    ip: '192.168.1.199',
-    port: 554,
-    username: 'admin',
-    streamPath: '/h264Preview_01_main',
-    isSimulated: true,
-    coverImage: ASSETS.roomModernGarage,
-    ptzSupport: false,
-    createdAt: Date.now() - 3600000 * 48,
-    lastSeen: Date.now() - 3600000 * 2,
-  },
-];
-
-export type NavDestination = 'welcome' | 'camera_mode' | 'control_center';
+export type NavDestination = 'welcome' | 'camera_mode' | 'viewer_mode' | 'control_center';
 
 export default function App() {
   const [currentDestination, setCurrentDestination] = useState<NavDestination>('welcome');
+  const [pairedSessionId, setPairedSessionId] = useState<string | undefined>(undefined);
+  const [pairedPin, setPairedPin] = useState<string | undefined>(undefined);
   const [bottomTab, setBottomTab] = useState<'centro' | 'eventi' | 'mappa' | 'impostazioni'>('centro');
 
   // Cameras State
@@ -229,21 +91,34 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) {
+          // Remove old seeded sample devices and any camera explicitly marked simulated.
+          const demoIds = new Set(['ip_tapo_c200', 'ip_giardino_c310', 'ip_retro_garage', 'ip_ezviz_c6n']);
+          const realCameras = parsed.filter((camera: CameraDevice) =>
+            camera &&
+            typeof camera.id === 'string' &&
+            !demoIds.has(camera.id) &&
+            camera.isSimulated !== true
+          );
+          if (realCameras.length !== parsed.length) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(realCameras));
+          }
+          return realCameras;
+        }
       }
     } catch {
-      // Fallback
+      // Ignore corrupted saved data and start with an empty camera list.
     }
-    return DEFAULT_CAMERAS;
+    return [];
   });
 
   // Favorite Camera IDs
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem(FAVORITES_KEY);
-      return saved ? JSON.parse(saved) : ['ip_tapo_c200', 'ip_giardino_c310'];
+      return saved ? JSON.parse(saved) : [];
     } catch {
-      return ['ip_tapo_c200', 'ip_giardino_c310'];
+      return [];
     }
   });
 
@@ -258,9 +133,9 @@ export default function App() {
   const [recordingsCount, setRecordingsCount] = useState<number>(() => {
     try {
       const saved = localStorage.getItem(RECORDINGS_KEY);
-      return saved ? parseInt(saved, 10) : 3;
+      return saved ? Math.max(0, parseInt(saved, 10) || 0) : 0;
     } catch {
-      return 3;
+      return 0;
     }
   });
   const [isAlarmArmed, setIsAlarmArmed] = useState<boolean>(false);
@@ -268,7 +143,7 @@ export default function App() {
   const [actionFeedbackToast, setActionFeedbackToast] = useState<string | null>(null);
 
   // Search & Filtering
-  const [eventsList, setEventsList] = useState<SecurityEvent[]>(SAMPLE_EVENTS);
+  const [eventsList, setEventsList] = useState<SecurityEvent[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
   const [eventsFilter, setEventsFilter] = useState<'all' | 'motion' | 'person'>('all');
@@ -278,9 +153,99 @@ export default function App() {
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
   const [selectedCamera, setSelectedCamera] = useState<CameraDevice | null>(null);
   const [lanInfo, setLanInfo] = useState<{ localIp: string; lanUrl: string } | null>(null);
+  const [signalingServerUrl, setSignalingServerUrl] = useState<string>(() => getSignalingBaseUrl());
+  const [serverCheckStatus, setServerCheckStatus] = useState<'idle' | 'checking' | 'online' | 'error'>('idle');
+  const [serverCheckMessage, setServerCheckMessage] = useState<string>('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pairingOpen, setPairingOpen] = useState(false);
+  const [pairingLoading, setPairingLoading] = useState(false);
+  const [pairingSessionId, setPairingSessionId] = useState('');
+  const [pairingPin, setPairingPin] = useState('');
+  const [pairingQr, setPairingQr] = useState('');
+  const [pairingError, setPairingError] = useState('');
+  const [pairingCopied, setPairingCopied] = useState(false);
+
+  const createPhoneCameraPairing = async () => {
+    setPairingLoading(true);
+    setPairingError('');
+    try {
+      const response = await apiFetch('/api/signaling/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'CamGest Centro di controllo' }) });
+      if (!response.ok) throw new Error('Il server non è riuscito a creare una sessione. Riprova.');
+      const data = await response.json();
+      if (!data.sessionId || !data.pin) throw new Error('Il server non ha restituito sessione e PIN.');
+      const session = String(data.sessionId), code = String(data.pin);
+      const url = `${getSignalingBaseUrl()}/?mode=camera&session=${encodeURIComponent(session)}&pin=${encodeURIComponent(code)}`;
+      const qr = await generateQrDataUrl(url);
+      // Register the viewer tile immediately: it owns the receiving WebRTC peer connection.
+      const pairedCamera: CameraDevice = {
+        id: session,
+        name: 'Nuovo telefono',
+        type: 'phone',
+        status: 'connecting',
+        sessionId: session,
+        pin: code,
+        signalingBaseUrl: getSignalingBaseUrl(),
+        createdAt: Date.now(),
+        lastSeen: Date.now(),
+        facingMode: 'environment',
+        resolution: '1280x720',
+        fps: 30,
+      };
+      const existing = cameras.some((camera) => camera.sessionId === session);
+      if (!existing) saveCameras([pairedCamera, ...cameras]);
+      setPairingSessionId(session); setPairingPin(code); setPairingQr(qr); setPairingCopied(false);
+    } catch (error) {
+      setPairingError(error instanceof Error ? error.message : 'Errore durante la creazione del collegamento.');
+    } finally { setPairingLoading(false); }
+  };
+  const openPhoneCameraPairing = () => { setPairingOpen(true); if (!pairingSessionId) void createPhoneCameraPairing(); };
+  const copyPhonePairingLink = async () => {
+    const url = `${getSignalingBaseUrl()}/?mode=camera&session=${encodeURIComponent(pairingSessionId)}&pin=${encodeURIComponent(pairingPin)}`;
+    try { await navigator.clipboard.writeText(url); setPairingCopied(true); }
+    catch { setPairingError('Copia automatica non disponibile: usa il QR oppure inserisci sessione e PIN manualmente.'); }
+  };
 
   const currentHour = new Date().getHours();
+
+  const normalizeSignalingServerUrl = (value: string) => value.trim().replace(/\/+$/, '');
+
+  const saveSignalingServerUrl = () => {
+    const normalized = normalizeSignalingServerUrl(signalingServerUrl);
+    if (normalized && !/^https?:\/\//i.test(normalized)) {
+      setServerCheckStatus('error');
+      setServerCheckMessage('Inserisci un indirizzo completo che inizi con https:// o http://.');
+      return;
+    }
+    try {
+      if (normalized) localStorage.setItem('camguard_signaling_server_url', normalized);
+      else localStorage.removeItem('camguard_signaling_server_url');
+      setSignalingServerUrl(normalized);
+      setServerCheckStatus('idle');
+      setServerCheckMessage('Indirizzo salvato. Le nuove connessioni useranno questo server.');
+      window.location.reload();
+    } catch {
+      setServerCheckStatus('error');
+      setServerCheckMessage('Impossibile salvare l’indirizzo sul dispositivo.');
+    }
+  };
+
+  const testSignalingServer = async () => {
+    const baseUrl = normalizeSignalingServerUrl(signalingServerUrl) || getSignalingBaseUrl();
+    setServerCheckStatus('checking');
+    setServerCheckMessage('Verifica della connessione...');
+    try {
+      const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/api/lan-info`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) throw new Error('Il server risponde con una pagina web invece che con le API CamGuard.');
+      const info = await response.json();
+      setServerCheckStatus('online');
+      setServerCheckMessage(`Server raggiungibile · ${info.localIp || new URL(baseUrl).host}`);
+    } catch (error) {
+      setServerCheckStatus('error');
+      setServerCheckMessage('Server non raggiungibile da questo dispositivo. Controlla URL, rete e certificato HTTPS.');
+    }
+  };
 
   // Persist cameras
   const saveCameras = (newCameras: CameraDevice[]) => {
@@ -302,23 +267,6 @@ export default function App() {
     });
   };
 
-  const handleSimulateNewEvent = () => {
-    const newEvt: SecurityEvent = {
-      id: `evt_${Date.now()}`,
-      cameraId: 'ip_tapo_c200',
-      cameraName: 'Salotto - Tapo C200',
-      type: 'motion',
-      severity: 'info',
-      description: 'Nuovo movimento rilevato adesso',
-      timeAgo: new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
-      timestamp: Date.now(),
-      roomImage: ASSETS.roomLivingRoom,
-    };
-    setEventsList((prev) => [newEvt, ...prev]);
-    playChimeSound();
-    showToast('Nuovo evento rilevato in Salotto');
-  };
-
   const onlineCount = useMemo(() => cameras.filter((c) => c.status === 'online').length, [cameras]);
   const offlineCount = useMemo(() => cameras.filter((c) => c.status === 'offline').length, [cameras]);
   const isFullyProtected = useMemo(() => cameras.length > 0 && offlineCount === 0, [cameras, offlineCount]);
@@ -329,10 +277,32 @@ export default function App() {
     return 'Buonasera';
   }, [currentHour]);
 
-  // Enforce startDestination = 'welcome' unconditionally at startup.
+  // Accept both the current query-string QR format and legacy hash links.
+  // Query parameters survive QR scanner/browser hand-offs more reliably.
   useEffect(() => {
-    if (window.location.hash) {
-      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    const hash = window.location.hash;
+    const searchParams = new URLSearchParams(window.location.search);
+    let mode = searchParams.get('mode');
+    let sessionId = searchParams.get('session');
+    let pin = searchParams.get('pin');
+
+    if ((!mode || !sessionId) && (hash.startsWith('#camera') || hash.startsWith('#viewer'))) {
+      const isLegacyViewer = hash.startsWith('#viewer');
+      const marker = isLegacyViewer ? '#viewer' : '#camera';
+      const legacyParams = new URLSearchParams(hash.slice(marker.length).replace(/^&/, ''));
+      mode = mode || (isLegacyViewer ? 'viewer' : 'camera');
+      sessionId = sessionId || legacyParams.get('session');
+      pin = pin || legacyParams.get('pin');
+    }
+
+    if (sessionId && (mode === 'camera' || mode === 'viewer')) {
+      setPairedSessionId(sessionId);
+      setPairedPin(pin || undefined);
+      setCurrentDestination(mode === 'viewer' ? 'viewer_mode' : 'camera_mode');
+    }
+
+    if (hash || searchParams.has('mode') || searchParams.has('session') || searchParams.has('pin')) {
+      window.history.replaceState(null, '', window.location.pathname);
     }
   }, []);
 
@@ -358,7 +328,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetch('/api/lan-info')
+    apiFetch('/api/lan-info')
       .then((res) => res.json())
       .then((data) => {
         if (data) {
@@ -371,15 +341,19 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  const handlePullRefresh = () => {
+  const handlePullRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setCameras((prev) =>
-        prev.map((cam) => ({ ...cam, status: 'online' }))
-      );
+    try {
+      const response = await apiFetch('/api/lan-info');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      await response.json();
+      setLanInfo((prev) => prev);
+      showToast('Server raggiungibile. Lo stato delle telecamere non è stato alterato.');
+    } catch {
+      showToast('Server non raggiungibile: controlla la connessione.');
+    } finally {
       setIsRefreshing(false);
-      showToast('Stato sincronizzato con la rete locale');
-    }, 600);
+    }
   };
 
   const handleAddCamera = (newCam: CameraDevice) => {
@@ -407,11 +381,16 @@ export default function App() {
   };
 
   const handleReconnectCamera = (targetCam: CameraDevice) => {
-    const updated = cameras.map((c) =>
-      c.id === targetCam.id ? { ...c, status: 'online' as const } : c
-    );
-    saveCameras(updated);
-    showToast(`"${targetCam.name}" ora online`);
+    // The card performs a real signaling reachability check for phone nodes.
+    // IP camera RTSP reachability is not implemented yet; never mark it online optimistically.
+    if (targetCam.type === 'ip') {
+      saveCameras(cameras.map((camera) =>
+        camera.id === targetCam.id ? { ...camera, status: 'offline' as const } : camera
+      ));
+      showToast('Verifica RTSP/ONVIF non disponibile: telecamera non dichiarata online.');
+      return;
+    }
+    showToast('La riconnessione viene verificata tramite la sessione del telefono.');
   };
 
   const togglePrivacyMode = () => {
@@ -460,6 +439,7 @@ export default function App() {
     return (
       <WelcomeScreen
         onSelectCameraMode={() => navigateTo('camera_mode')}
+        onSelectViewerMode={() => navigateTo('viewer_mode')}
         onSelectControlCenter={() => navigateTo('control_center')}
       />
     );
@@ -468,7 +448,27 @@ export default function App() {
   if (currentDestination === 'camera_mode') {
     return (
       <PhoneCameraScreen
-        onExit={() => navigateTo('welcome')}
+        initialSessionId={pairedSessionId}
+        initialPin={pairedPin}
+        onExit={() => {
+          setPairedSessionId(undefined);
+          setPairedPin(undefined);
+          navigateTo('welcome');
+        }}
+      />
+    );
+  }
+
+  if (currentDestination === 'viewer_mode') {
+    return (
+      <PhoneCameraViewer
+        initialSessionId={pairedSessionId}
+        initialPin={pairedPin}
+        onExit={() => {
+          setPairedSessionId(undefined);
+          setPairedPin(undefined);
+          navigateTo('welcome');
+        }}
       />
     );
   }
@@ -634,6 +634,12 @@ export default function App() {
                   </div>
                 </div>
               </motion.div>
+
+              <motion.button type="button" onClick={openPhoneCameraPairing} whileTap={{ scale: 0.98 }} className="w-full rounded-2xl border border-[#36C5FF]/35 bg-gradient-to-r from-[#10283A] to-[#101C2B] p-4 flex items-center gap-3 text-left shadow-lg">
+                <span className="w-12 h-12 rounded-xl bg-[#36C5FF]/15 text-[#36C5FF] flex items-center justify-center"><QrCode className="w-6 h-6" /></span>
+                <span className="flex-1"><strong className="block text-white">Collega una telecamera telefono</strong><span className="text-xs text-[#99B0CA]">Mostra il QR e il PIN per il secondo dispositivo</span></span>
+                <QrCode className="w-5 h-5 text-[#36C5FF]" />
+              </motion.button>
 
               {/* PRIVACY MODE TOGGLE CARD (Stagger 2) */}
               <motion.div
@@ -962,6 +968,7 @@ export default function App() {
                         camera={camera}
                         index={idx}
                         privacyMode={privacyMode}
+                        suspendStream={Boolean(selectedCamera)}
                         isFavorite={favoriteIds.includes(camera.id)}
                         onToggleFavorite={toggleFavorite}
                         onSelect={(cam) => setSelectedCamera(cam)}
@@ -986,26 +993,14 @@ export default function App() {
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
               className="space-y-5 max-w-4xl mx-auto"
             >
-              {/* Header Eventi con Pulsante di Test Interattivo */}
+              {/* Real security event timeline */}
               <div className="p-4 rounded-2xl bg-[#101C2B] border border-[#24364D] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-bold text-[#F4F8FF] tracking-tight">Eventi &amp; Allarmi</h2>
-                  <p className="text-xs text-[#99B0CA]">Timeline in tempo reale con registrazione istantanea</p>
+                  <p className="text-xs text-[#99B0CA]">Qui compaiono soltanto eventi rilevati da una sorgente reale.</p>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* Pulsante microinterazione: simula arrivo di un nuovo evento per testare l'animazione */}
-                  <motion.button
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.94 }}
-                    onClick={handleSimulateNewEvent}
-                    className="px-3 py-1.5 rounded-xl bg-[#36C5FF]/15 hover:bg-[#36C5FF]/25 text-[#36C5FF] border border-[#36C5FF]/30 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
-                    title="Simula l'arrivo immediato di un nuovo evento"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Simula evento</span>
-                  </motion.button>
-
                   {/* Filter Pills */}
                   <div className="flex items-center gap-1.5 text-xs">
                     <button
@@ -1048,7 +1043,14 @@ export default function App() {
                   Oggi, {new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </span>
 
-                {/* Timeline Container with Connected Vertical Line */}
+                {filteredEvents.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[#24364D] bg-[#101C2B] p-8 text-center">
+                    <Activity className="mx-auto mb-3 h-8 w-8 text-[#64748B]" />
+                    <h3 className="text-sm font-bold text-white">Nessun evento reale registrato</h3>
+                    <p className="mt-2 text-xs text-[#99B0CA]">Gli eventi appariranno qui quando una telecamera collegata rileverà movimento, una disconnessione o un allarme.</p>
+                  </div>
+                ) : (
+                /* Timeline Container with Connected Vertical Line */
                 <div className="relative pl-6 space-y-3 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-[#24364D]">
                   <AnimatePresence initial={false}>
                     {filteredEvents.map((evt, index) => (
@@ -1116,6 +1118,7 @@ export default function App() {
                     ))}
                   </AnimatePresence>
                 </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -1149,6 +1152,34 @@ export default function App() {
               <div className="p-4 rounded-2xl bg-[#101C2B] border border-[#24364D]">
                 <h2 className="text-base font-bold text-[#F4F8FF] tracking-tight">Impostazioni CamGest</h2>
                 <p className="text-xs text-[#99B0CA]">Configurazione nodo locale e informazioni di sistema</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#101C2B] border border-[#24364D] space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-[#F4F8FF]">
+                  <Wifi className="w-4 h-4 text-[#36C5FF]" />
+                  <span>Server di segnalazione</span>
+                </div>
+                <p className="text-xs text-[#99B0CA] leading-relaxed">
+                  Per collegare due telefoni, inserisci l'indirizzo HTTPS del server CamGuard che ospita le API di segnalazione. Lascia vuoto solo se il server è servito dalla stessa origine dell'app.
+                </p>
+                <input
+                  type="url"
+                  inputMode="url"
+                  value={signalingServerUrl}
+                  onChange={(event) => setSignalingServerUrl(event.target.value)}
+                  placeholder="https://tuo-server-camguard.example"
+                  className="w-full rounded-xl bg-[#080E18] border border-[#24364D] px-3 py-3 text-sm text-[#F4F8FF] placeholder:text-[#64748B] focus:outline-none focus:border-[#36C5FF]"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                <div className="flex gap-2">
+                  <button onClick={saveSignalingServerUrl} className="flex-1 rounded-xl bg-[#36C5FF] px-3 py-2.5 text-xs font-bold text-[#080E18]">Salva server</button>
+                  <button onClick={testSignalingServer} disabled={serverCheckStatus === 'checking'} className="rounded-xl border border-[#24364D] px-3 py-2.5 text-xs font-bold text-[#F4F8FF] disabled:opacity-50">{serverCheckStatus === 'checking' ? 'Verifico…' : 'Test connessione'}</button>
+                </div>
+                {serverCheckMessage && (
+                  <p className={`text-xs ${serverCheckStatus === 'online' ? 'text-[#45D7B0]' : serverCheckStatus === 'error' ? 'text-[#FF6577]' : 'text-[#99B0CA]'}`}>{serverCheckMessage}</p>
+                )}
               </div>
 
               <div className="p-4 rounded-2xl bg-[#101C2B] border border-[#24364D] space-y-3">
@@ -1238,9 +1269,33 @@ export default function App() {
           <DailyRecapModal
             isOpen={isRecapModalOpen}
             onClose={() => setIsRecapModalOpen(false)}
-            events={SAMPLE_EVENTS as any}
+            events={eventsList as any}
             cameras={cameras}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Control-center phone pairing */}
+      <AnimatePresence>
+        {pairingOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} className="relative w-full max-w-md rounded-3xl border border-[#24364D] bg-[#101C2B] p-5 text-center space-y-4 shadow-2xl">
+              <button onClick={() => setPairingOpen(false)} className="absolute right-3 top-3 rounded-lg p-2 text-[#99B0CA]" aria-label="Chiudi"><X className="w-5 h-5" /></button>
+              <div className="mx-auto w-12 h-12 rounded-2xl bg-[#36C5FF]/15 text-[#36C5FF] flex items-center justify-center"><QrCode className="w-6 h-6" /></div>
+              <h2 className="text-xl font-black text-white">Associa una telecamera</h2>
+              <p className="text-sm text-[#99B0CA]">Scansiona questo QR dal secondo telefono: si aprirà direttamente la modalità fotocamera. In alternativa inserisci sessione e PIN sul telefono fotocamera.</p>
+              {pairingLoading ? <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-[#36C5FF] w-8 h-8" /></div> : pairingQr ? <img src={pairingQr} alt="QR per collegare la fotocamera" className="mx-auto w-52 h-52 rounded-xl bg-white p-2" /> : null}
+              {pairingSessionId && <div className="rounded-xl border border-[#24364D] bg-[#080E18] p-3 text-left space-y-2">
+                <div><span className="block text-[10px] uppercase tracking-widest text-[#99B0CA]">Codice sessione</span><code className="block break-all text-sm text-white select-all">{pairingSessionId}</code></div>
+                <div><span className="block text-[10px] uppercase tracking-widest text-[#99B0CA]">PIN del Centro di controllo</span><code className="text-xl font-black tracking-[0.25em] text-[#36C5FF] select-all">{pairingPin}</code></div>
+              </div>}
+              {pairingError && <p role="alert" className="rounded-xl bg-rose-500/10 p-3 text-sm text-rose-200">{pairingError}</p>}
+              <div className="flex gap-2">
+                <button onClick={() => void createPhoneCameraPairing()} disabled={pairingLoading} className="flex-1 rounded-xl border border-[#24364D] py-3 text-sm font-bold text-white disabled:opacity-50">Nuovo codice</button>
+                <button onClick={() => void copyPhonePairingLink()} disabled={!pairingSessionId} className="flex-1 rounded-xl bg-[#36C5FF] py-3 text-sm font-extrabold text-[#080E18] disabled:opacity-50"><span className="inline-flex items-center gap-2">{pairingCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}{pairingCopied ? 'Copiato' : 'Copia link'}</span></button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

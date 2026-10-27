@@ -1,4 +1,5 @@
 import { CameraDevice } from '../types/camera';
+import { apiFetch } from './api';
 
 export interface SignalingMessage {
   id: string;
@@ -18,15 +19,18 @@ export type MessageCallback = (msg: SignalingMessage) => void;
 export class SignalingClient {
   private sessionId: string;
   private role: 'viewer' | 'camera';
+  private pin: string;
   private broadcastChannel: BroadcastChannel | null = null;
   private pollInterval: any = null;
   private lastTimestamp: number = 0;
   private listeners: Set<MessageCallback> = new Set();
+  private processedMessageIds = new Set<string>();
   private isDestroyed = false;
 
-  constructor(sessionId: string, role: 'viewer' | 'camera') {
+  constructor(sessionId: string, role: 'viewer' | 'camera', pin = '') {
     this.sessionId = sessionId;
     this.role = role;
+    this.pin = pin;
 
     // 1. Setup BroadcastChannel for instant local tab testing
     try {
@@ -34,7 +38,7 @@ export class SignalingClient {
       this.broadcastChannel.onmessage = (event) => {
         const msg = event.data as SignalingMessage;
         if (msg && msg.target === this.role) {
-          this.notifyListeners(msg);
+          this.processIncoming(msg);
         }
       };
     } catch (err) {
@@ -48,6 +52,20 @@ export class SignalingClient {
   public onMessage(callback: MessageCallback) {
     this.listeners.add(callback);
     return () => this.listeners.delete(callback);
+  }
+
+  private processIncoming(msg: SignalingMessage) {
+    if (msg.id && this.processedMessageIds.has(msg.id)) return;
+    if (msg.id) {
+      this.processedMessageIds.add(msg.id);
+      // Keep memory bounded; older messages are outside the polling cursor window.
+      if (this.processedMessageIds.size > 1000) {
+        const oldest = this.processedMessageIds.values().next().value;
+        if (oldest) this.processedMessageIds.delete(oldest);
+      }
+    }
+    this.lastTimestamp = Math.max(this.lastTimestamp, msg.timestamp || 0);
+    this.notifyListeners(msg);
   }
 
   private notifyListeners(msg: SignalingMessage) {
@@ -84,15 +102,18 @@ export class SignalingClient {
 
     // Send to LAN server
     try {
-      await fetch(`/api/signaling/${this.sessionId}/message`, {
+      const res = await apiFetch(`/api/signaling/${encodeURIComponent(this.sessionId)}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: msg.id,
+          pin: this.pin,
           sender: this.role,
           type,
           payload,
         }),
       });
+      if (!res.ok) return false;
       return true;
     } catch (err) {
       // In purely offline mock/same tab, server fetch might fail or return error, which is fine
@@ -104,17 +125,14 @@ export class SignalingClient {
     const poll = async () => {
       if (this.isDestroyed) return;
       try {
-        const res = await fetch(
-          `/api/signaling/${this.sessionId}/messages?role=${this.role}&since=${this.lastTimestamp}`
+        const res = await apiFetch(
+          `/api/signaling/${encodeURIComponent(this.sessionId)}/messages?role=${this.role}&pin=${encodeURIComponent(this.pin)}&since=${Math.max(0, this.lastTimestamp - 1)}`
         );
         if (res.ok) {
           const data = await res.json();
           if (data.messages && Array.isArray(data.messages)) {
             data.messages.forEach((m: SignalingMessage) => {
-              if (m.timestamp > this.lastTimestamp) {
-                this.lastTimestamp = m.timestamp;
-                this.notifyListeners(m);
-              }
+              this.processIncoming(m);
             });
           }
         }

@@ -1,0 +1,118 @@
+name: Build CamGuard Android APK
+
+on:
+  push:
+    branches:
+      - codemagic/android-apk
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    name: Lint, build and package Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies and type-check
+        run: |
+          npm install --no-audit --no-fund --legacy-peer-deps
+          npm run lint
+
+      - name: Install Capacitor 8
+        run: |
+          npm install --no-save --legacy-peer-deps --no-audit --no-fund @capacitor/core@^8 @capacitor/cli@^8 @capacitor/android@^8
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Generate Android project if absent
+        run: |
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
+
+      - name: Add and verify Android permissions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          content = p.read_text(encoding="utf-8")
+          permissions = [
+              "android.permission.CAMERA",
+              "android.permission.RECORD_AUDIO",
+              "android.permission.MODIFY_AUDIO_SETTINGS",
+          ]
+          for permission in permissions:
+              pattern = r'<uses-permission\s+android:name="' + re.escape(permission) + r'"'
+              if not re.search(pattern, content):
+                  content, count = re.subn(
+                      r'<application\b',
+                      '<uses-permission android:name="' + permission + '" />\n    <application',
+                      content,
+                      count=1,
+                  )
+                  if count != 1:
+                      raise SystemExit("Could not insert Android permission: " + permission)
+          required = permissions[:2]
+          missing = [
+              permission for permission in required
+              if not re.search(r'<uses-permission\s+android:name="' + re.escape(permission) + r'"', content)
+          ]
+          if missing:
+              raise SystemExit("Missing Android permissions: " + ", ".join(missing))
+          p.write_text(content, encoding="utf-8")
+          print("Camera and microphone permissions verified.")
+          PY
+
+      - name: Sync Capacitor Android
+        run: |
+          npx cap sync android
+          python3 - <<'PY'
+          from pathlib import Path
+          content = Path("android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+          required = ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"]
+          missing = [item for item in required if item not in content]
+          if missing:
+              raise SystemExit("Capacitor sync removed permissions: " + ", ".join(missing))
+          print("Permissions remain present after Capacitor sync.")
+          PY
+
+      - name: Configure Android SDK
+        run: |
+          SDK_PATH="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
+          if [ -z "$SDK_PATH" ]; then
+            echo "Android SDK path is not configured on the runner."
+            exit 1
+          fi
+          echo "sdk.dir=$SDK_PATH" > android/local.properties
+
+      - name: Assemble debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CamGuard-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7

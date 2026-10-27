@@ -1,0 +1,74 @@
+workflows:
+  camguard-android-debug:
+    name: CamGuard Android APK (debug)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      node: v22.16.0
+      java: 21
+    scripts:
+      - name: Clean npm cache
+        script: |
+          npm cache clean --force
+      - name: Install dependencies
+        script: |
+          npm install --no-audit --no-fund --legacy-peer-deps
+          npm run lint
+      - name: Install Capacitor 8
+        script: |
+          npm install --no-save --legacy-peer-deps --no-audit --no-fund @capacitor/core@^8 @capacitor/cli@^8 @capacitor/android@^8
+      - name: Build web app
+        script: |
+          npm run build
+      - name: Generate Android project if absent
+        script: |
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
+      - name: Add Android camera and microphone permissions
+        script: |
+          MANIFEST="$CM_BUILD_DIR/android/app/src/main/AndroidManifest.xml"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          permissions = [
+              "android.permission.CAMERA",
+              "android.permission.RECORD_AUDIO",
+              "android.permission.MODIFY_AUDIO_SETTINGS",
+          ]
+          for permission in permissions:
+              if not re.search(r'<uses-permission\s+android:name="' + re.escape(permission) + r'"', s):
+                  s = re.sub(r'<application\b', '<uses-permission android:name="' + permission + '" />\n    <application', s, count=1)
+          required = permissions[:2]
+          missing = [permission for permission in required if not re.search(r'<uses-permission\s+android:name="' + re.escape(permission) + r'"', s)]
+          if missing:
+              raise SystemExit("Missing Android permissions: " + ", ".join(missing))
+          p.write_text(s)
+          print("Verified camera and microphone permissions in AndroidManifest.xml")
+          PY
+      - name: Sync web app to Android
+        script: |
+          npx cap sync android
+          python3 - <<'PY'
+          from pathlib import Path
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          xml = manifest.read_text()
+          required = ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"]
+          missing = [permission for permission in required if permission not in xml]
+          if missing:
+              raise SystemExit("Capacitor sync removed required permissions: " + ", ".join(missing))
+          print("Camera/microphone permissions verified after Capacitor sync.")
+          PY
+      - name: Configure Android SDK path
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
+      - name: Build debug APK
+        script: |
+          java -version
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+    artifacts:
+      - android/app/build/outputs/apk/debug/app-debug.apk

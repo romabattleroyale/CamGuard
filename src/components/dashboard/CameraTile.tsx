@@ -30,11 +30,13 @@ import { CameraDevice } from '../../types/camera';
 import { SignalingClient, createPeerConnectionConfig } from '../../services/webrtc';
 import { playChimeSound } from '../../utils/audio';
 import { ASSETS } from '../../assets/images';
+import { apiFetch } from '../../services/api';
 
 interface CameraTileProps {
   camera: CameraDevice;
   index: number;
   privacyMode?: boolean;
+  suspendStream?: boolean;
   isFavorite?: boolean;
   onToggleFavorite?: (id: string) => void;
   onSelect: (camera: CameraDevice) => void;
@@ -47,6 +49,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
   camera,
   index,
   privacyMode = false,
+  suspendStream = false,
   isFavorite = false,
   onToggleFavorite,
   onSelect,
@@ -55,7 +58,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
   onReconnect,
 }) => {
   const isOnline = camera.status === 'online';
-  const [isLive, setIsLive] = useState(isOnline);
+  const [isLive, setIsLive] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [batteryLevel, setBatteryLevel] = useState<number | undefined>(camera.batteryLevel);
   const [isCharging, setIsCharging] = useState<boolean | undefined>(camera.isCharging);
@@ -63,7 +66,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
   const [motionAlert, setMotionAlert] = useState<boolean>(false);
   const [isIntercomActive, setIsIntercomActive] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [lastActivity, setLastActivity] = useState<string>(isOnline ? 'In tempo reale' : '15 min fa');
+  const [lastActivity, setLastActivity] = useState<string>('Nessuna attività registrata');
 
   // Indoor vs outdoor designation (default true if indoor not explicitly false)
   const isIndoor = camera.isIndoor !== false;
@@ -75,31 +78,87 @@ export const CameraTile: React.FC<CameraTileProps> = ({
   const signalingRef = useRef<SignalingClient | null>(null);
   const localMicStreamRef = useRef<MediaStream | null>(null);
 
-  // Sync state with camera.status prop
+  // Saved status is historical only; live state requires media tracks.
   useEffect(() => {
-    setIsLive(camera.status === 'online');
-    if (camera.status === 'online') {
-      setLastActivity('In tempo reale');
+    if (camera.type !== 'phone') {
+      setIsLive(false);
+      setLastActivity('Flusso IP non disponibile');
     }
-  }, [camera.status]);
+  }, [camera.status, camera.type]);
 
   // WebRTC Setup for Phone Camera
   useEffect(() => {
-    if (camera.type !== 'phone' || !camera.sessionId || !isOnline) return;
+    if (suspendStream || camera.type !== 'phone' || !camera.sessionId) {
+      setIsLive(false);
+      return;
+    }
+
+    setIsLive(false);
+    // A persisted "online" flag is historical only. Until actual media arrives,
+    // report this phone camera as offline so the dashboard cannot imply a live feed.
+    if (camera.status !== 'offline') {
+      onUpdate({ ...camera, status: 'offline', lastSeen: Date.now() });
+    }
 
     let isSubscribed = true;
-    const signaling = new SignalingClient(camera.sessionId, 'viewer');
+    const signaling = new SignalingClient(camera.sessionId, 'viewer', camera.pin || '');
     signalingRef.current = signaling;
 
     const pc = new RTCPeerConnection(createPeerConnectionConfig());
+    // The phone's initial SDP already contains its video m-line. As the answerer,
+    // let setRemoteDescription create/match that transceiver instead of adding a
+    // duplicate video m-line before the offer arrives.
     peerConnectionRef.current = pc;
+    // ICE candidates can arrive in the same polling batch as the offer/answer.
+    // Buffer them until the remote SDP is installed instead of dropping them.
+    const pendingIceCandidates: RTCIceCandidateInit[] = [];
+    const flushPendingIceCandidates = async () => {
+      while (pendingIceCandidates.length > 0 && pc.remoteDescription) {
+        const candidate = pendingIceCandidates.shift();
+        if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    };
 
-    pc.ontrack = (event) => {
-      if (event.streams && event.streams[0] && videoRef.current) {
-        videoRef.current.srcObject = event.streams[0];
-        videoRef.current.play().catch(console.warn);
+    const remoteMediaStream = new MediaStream();
+    pc.ontrack = async (event) => {
+      // Some WebViews deliver a track event without event.streams[0].
+      // Build a stable remote stream from tracks instead of silently ignoring it.
+      const incomingStream = event.streams?.[0];
+      const track = event.track;
+      if (incomingStream) {
+        incomingStream.getTracks().forEach((incomingTrack) => {
+          if (!remoteMediaStream.getTracks().some((t) => t.id === incomingTrack.id)) {
+            remoteMediaStream.addTrack(incomingTrack);
+          }
+        });
+      } else if (!remoteMediaStream.getTracks().some((t) => t.id === track.id)) {
+        remoteMediaStream.addTrack(track);
+      }
+
+      const video = videoRef.current;
+      if (!video || track.kind !== 'video') return;
+      // Explicitly satisfy mobile WebView autoplay policy and attach the stream
+      // as soon as the remote video track arrives.
+      video.muted = true;
+      video.autoplay = true;
+      video.playsInline = true;
+      video.srcObject = incomingStream || remoteMediaStream;
+      const markVideoLive = () => {
+        if (video.videoWidth <= 0 || video.videoHeight <= 0) return;
         setIsLive(true);
-        onUpdate({ ...camera, status: 'online' });
+        setLastActivity('Flusso video ricevuto');
+        onUpdate({ ...camera, status: 'online', lastSeen: Date.now() });
+      };
+      video.onloadedmetadata = markVideoLive;
+      video.onloadeddata = markVideoLive;
+      video.onplaying = markVideoLive;
+      video.onresize = markVideoLive;
+      track.onunmute = markVideoLive;
+      try {
+        await video.play();
+        markVideoLive();
+      } catch (error) {
+        console.error('Riproduzione video remota bloccata; riproverò al prossimo evento media', error);
       }
     };
 
@@ -111,12 +170,15 @@ export const CameraTile: React.FC<CameraTileProps> = ({
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') {
-        setIsLive(true);
+        setLastActivity('Connessione WebRTC stabilita; attendo fotogrammi');
       } else if (
         pc.connectionState === 'disconnected' ||
-        pc.connectionState === 'failed'
+        pc.connectionState === 'failed' ||
+        pc.connectionState === 'closed'
       ) {
         setIsLive(false);
+        setLastActivity('Flusso non disponibile');
+        onUpdate({ ...camera, status: 'offline', lastSeen: Date.now() });
       }
     };
 
@@ -126,23 +188,29 @@ export const CameraTile: React.FC<CameraTileProps> = ({
       if (msg.type === 'offer') {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+          await flushPendingIceCandidates();
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           await signaling.sendMessage('answer', answer);
-          setIsLive(true);
+          // Do not report live until the WebRTC connection delivers actual media.
         } catch (err) {
           console.error('Failed to handle offer', err);
         }
       } else if (msg.type === 'answer') {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
-          setIsLive(true);
+          await flushPendingIceCandidates();
+          // An SDP answer is not proof that the media track is flowing.
         } catch (err) {
           console.error('Failed to handle answer', err);
         }
       } else if (msg.type === 'candidate' && msg.payload) {
         try {
-          await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+          } else {
+            pendingIceCandidates.push(msg.payload as RTCIceCandidateInit);
+          }
         } catch (err) {
           console.warn('ICE candidate error', err);
         }
@@ -158,9 +226,11 @@ export const CameraTile: React.FC<CameraTileProps> = ({
             setTimeout(() => setMotionAlert(false), 2500);
           }
         }
-        setIsLive(true);
+        // Status messages update telemetry only, not live-stream status.
       } else if (msg.type === 'disconnect') {
         setIsLive(false);
+        setLastActivity('Telefono disconnesso');
+        onUpdate({ ...camera, status: 'offline', lastSeen: Date.now() });
       }
     });
 
@@ -172,19 +242,40 @@ export const CameraTile: React.FC<CameraTileProps> = ({
         localMicStreamRef.current.getTracks().forEach((t) => t.stop());
       }
     };
-  }, [camera.sessionId, camera.type, isOnline]);
+  }, [camera.sessionId, camera.type, suspendStream]);
 
-  const handleManualReconnect = (e: React.MouseEvent) => {
+  const handleManualReconnect = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsReconnecting(true);
-    setTimeout(() => {
-      setIsReconnecting(false);
-      if (onReconnect) {
-        onReconnect(camera);
+
+    try {
+      if (camera.type === 'phone' && camera.sessionId) {
+        const response = await apiFetch(
+          `/api/signaling/${encodeURIComponent(camera.sessionId)}/messages?role=viewer&pin=${encodeURIComponent(camera.pin || '')}&since=${Date.now() - 15000}`
+        );
+        if (!response.ok) {
+          throw new Error('La sessione della telecamera non è raggiungibile.');
+        }
+        const data = await response.json();
+        if (!Array.isArray(data.messages)) {
+          throw new Error('Risposta del server non valida.');
+        }
+        const isRecentlyActive = data.messages.length > 0 || data.cameraInfo != null;
+        if (!isRecentlyActive) {
+          throw new Error('Nessuna attività recente dalla telecamera. Verifica che il telefono trasmettitore sia aperto e collegato.');
+        }
+        onUpdate({ ...camera, status: 'online', lastSeen: Date.now() });
       } else {
-        onUpdate({ ...camera, status: 'online' });
+        // IP camera reachability requires a real RTSP/ONVIF probe service.
+        // Do not falsely mark an untested device as online.
+        throw new Error('La verifica reale RTSP/ONVIF non è ancora configurata per questa telecamera IP.');
       }
-    }, 1200);
+    } catch (error) {
+      console.warn('Camera reconnect check failed', error);
+      onUpdate({ ...camera, status: 'offline', lastSeen: Date.now() });
+    } finally {
+      setIsReconnecting(false);
+    }
   };
 
   const toggleRemoteTorch = (e: React.MouseEvent) => {
@@ -230,43 +321,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
     }
   };
 
-  // Hardware Brand & Model resolution
-  const brandDisplay = () => {
-    if (camera.type === 'phone') return 'Smartphone Node P2P';
-    switch (camera.brand) {
-      case 'tapo':
-        return camera.name.toLowerCase().includes('310') ? 'TP-Link Tapo C310' : 'TP-Link Tapo C200';
-      case 'ezviz':
-        return 'EZVIZ C6N Indoor';
-      case 'reolink':
-        return 'Reolink E1 Pro';
-      default:
-        return 'IP RTSP Camera';
-    }
-  };
-
-  // Resolve room cover image
-  const getRoomImage = () => {
-    if (camera.coverImage) return camera.coverImage;
-    const nameLower = camera.name.toLowerCase();
-    const idLower = camera.id.toLowerCase();
-    if (nameLower.includes('salotto') || idLower.includes('salotto') || nameLower.includes('living')) {
-      return ASSETS.roomLivingRoom;
-    }
-    if (nameLower.includes('giardino') || idLower.includes('giardino') || nameLower.includes('patio')) {
-      return ASSETS.roomGardenPatio;
-    }
-    if (nameLower.includes('garage') || idLower.includes('garage')) {
-      return ASSETS.roomModernGarage;
-    }
-    if (nameLower.includes('ingresso') || idLower.includes('ingresso') || nameLower.includes('hallway')) {
-      return ASSETS.roomHallwayEntrance;
-    }
-    return ASSETS.dashboardInteriorNight;
-  };
-
-  const roomImage = getRoomImage();
-
+  // No synthetic room imagery is used as a camera feed.
   return (
     <motion.div
       layout
@@ -297,32 +352,26 @@ export const CameraTile: React.FC<CameraTileProps> = ({
             }`}
           >
             {camera.type === 'phone' ? (
-              <video
-                ref={videoRef}
-                className="w-full h-full object-cover"
-                autoPlay
-                playsInline
-                muted
-              />
-            ) : (
-              <div className="w-full h-full relative overflow-hidden">
-                {/* Photorealistic room environment base image */}
-                <img
-                  src={roomImage}
-                  alt={camera.name}
-                  className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700 ease-out brightness-90"
-                  loading="lazy"
+              <>
+                <video
+                  ref={videoRef}
+                  className="w-full h-full object-cover"
+                  autoPlay
+                  playsInline
+                  muted
                 />
-
-                {/* Subtle CCTV digital surveillance vignette */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
-
-                {/* Live CCTV timestamp & codec overlay */}
-                <div className="absolute bottom-2.5 left-2.5 z-10 font-mono text-[10px] text-white/80 bg-black/55 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/10 flex items-center gap-2">
-                  <span className="text-[#45D7B0] font-bold">25 FPS</span>
-                  <span>•</span>
-                  <span>{camera.ip ? `${camera.ip}:${camera.port || 554}` : 'LAN P2P'}</span>
-                </div>
+                {!isLive && (
+                  <div className="absolute inset-x-3 bottom-3 z-20 rounded-lg bg-black/80 px-3 py-2 text-[11px] font-semibold text-amber-200 backdrop-blur-sm">
+                    Flusso video non collegato
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-[#080E18] p-4 text-center">
+                <Camera className="w-8 h-8 text-[#64748B]" />
+                <p className="text-xs font-bold text-white">Flusso video non disponibile</p>
+                <p className="text-[10px] text-[#99B0CA]">RTSP/ONVIF non ancora collegato a un relay compatibile</p>
+                {camera.ip && <span className="text-[10px] font-mono text-[#64748B]">{camera.ip}:{camera.port || 554}</span>}
               </div>
             )}
           </div>
@@ -488,7 +537,17 @@ export const CameraTile: React.FC<CameraTileProps> = ({
               {camera.name}
             </h3>
             <p className="text-[11px] text-[#99B0CA] truncate">
-              {brandDisplay()}
+              {camera.type === 'phone'
+                ? 'Telefono collegato'
+                : camera.brand === 'tapo'
+                  ? 'TP-Link Tapo'
+                  : camera.brand === 'ezviz'
+                    ? 'EZVIZ'
+                    : camera.brand === 'reolink'
+                      ? 'Reolink'
+                      : camera.brand === 'generic'
+                        ? 'Telecamera IP'
+                        : 'Telecamera IP'}
             </p>
           </div>
 

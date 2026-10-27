@@ -13,9 +13,6 @@ import {
   Volume2,
   ShieldAlert,
   AlertTriangle,
-  QrCode,
-  Copy,
-  Check,
   X,
   Share2
 } from 'lucide-react';
@@ -23,7 +20,7 @@ import { SignalingClient, createPeerConnectionConfig } from '../../services/webr
 import { playSirenSound, stopSirenSound, playChimeSound } from '../../utils/audio';
 import { MotionDetector } from '../../utils/motion';
 import { WakeLockManager, getBatteryStatus } from '../../utils/device';
-import { generateQrDataUrl } from '../../utils/qr';
+import { apiFetch } from '../../services/api';
 
 interface PhoneCameraScreenProps {
   initialSessionId?: string;
@@ -40,9 +37,8 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
   const [deviceName, setDeviceName] = useState<string>('CamGest Telefono');
   const [sessionId, setSessionId] = useState<string>(initialSessionId || '');
   const [pin, setPin] = useState<string>(initialPin || '');
-  const [qrModalOpen, setQrModalOpen] = useState(false);
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [manualJoinRequested, setManualJoinRequested] = useState(false);
+  const [manualJoinError, setManualJoinError] = useState('');
 
   // Time & Battery
   const [currentTime, setCurrentTime] = useState(
@@ -59,6 +55,8 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
   const [isBlackScreen, setIsBlackScreen] = useState<boolean>(false);
   const [isSirenActive, setIsSirenActive] = useState<boolean>(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [permissionRetryCount, setPermissionRetryCount] = useState(0);
 
   // Motion Detection
   const [motionActive, setMotionActive] = useState<boolean>(true);
@@ -89,11 +87,17 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
   // 1. Initialize Camera and Microphone (Rear Camera by default)
   const initLocalStream = useCallback(async (facing: 'environment' | 'user') => {
     setPermissionError(null);
+    setCameraActive(false);
     try {
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((t) => t.stop());
       }
 
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('MEDIA_UNAVAILABLE');
+      }
+
+      // Request video first, so microphone denial does not prevent surveillance video.
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: facing },
@@ -101,14 +105,26 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
           height: { ideal: 720, max: 1080 },
           frameRate: { ideal: 30, max: 30 },
         },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio: false,
       });
 
+      try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: false,
+        });
+        audioStream.getAudioTracks().forEach((track) => stream.addTrack(track));
+      } catch (audioError) {
+        // Video remains usable if the user denies microphone permission.
+        console.warn('Microphone unavailable; continuing with video only.', audioError);
+      }
+
       localStreamRef.current = stream;
+      setCameraActive(Boolean(stream.getVideoTracks().some((track) => track.readyState === 'live')));
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -123,18 +139,42 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
 
       if (peerConnectionRef.current) {
         const senders = peerConnectionRef.current.getSenders();
-        const videoSender = senders.find((s) => s.track && s.track.kind === 'video');
+        const videoTrack = stream.getVideoTracks()[0];
+        const audioTrack = stream.getAudioTracks()[0];
+        const videoSender = senders.find((sender) => sender.track?.kind === 'video');
+        const audioSender = senders.find((sender) => sender.track?.kind === 'audio');
+
+        // Replace existing tracks after a permission retry / camera flip.
         if (videoSender && videoTrack) {
-          videoSender.replaceTrack(videoTrack);
+          await videoSender.replaceTrack(videoTrack);
+        } else if (!videoSender && videoTrack) {
+          peerConnectionRef.current.addTrack(videoTrack, stream);
+        }
+        if (audioSender && audioTrack) {
+          await audioSender.replaceTrack(audioTrack);
+        } else if (!audioSender && audioTrack) {
+          peerConnectionRef.current.addTrack(audioTrack, stream);
         }
       }
 
       return stream;
     } catch (err: any) {
       console.error('Camera initialization error', err);
-      setPermissionError(
-        'Permessi fotocamera e microfono necessari. Consenti l’accesso per avviare la videosorveglianza.'
-      );
+      const errorName = err?.name || '';
+      const message =
+        errorName === 'NotAllowedError' || errorName === 'SecurityError'
+          ? 'Accesso negato. Consenti Fotocamera e Microfono nelle autorizzazioni di Android, poi tocca Riprova.'
+          : errorName === 'NotFoundError'
+          ? 'Non è stata trovata una fotocamera o un microfono compatibile.'
+          : errorName === 'NotReadableError' || errorName === 'TrackStartError'
+          ? 'La fotocamera è occupata da un’altra app. Chiudi le altre app che la stanno usando e riprova.'
+          : errorName === 'OverconstrainedError'
+          ? 'La fotocamera non supporta le impostazioni richieste. Riprova con le impostazioni predefinite.'
+          : errorName === 'MEDIA_UNAVAILABLE'
+          ? 'Questo WebView non espone l’API fotocamera. Verifica che l’APK sia aggiornato e che i permessi Android siano configurati.'
+          : 'Impossibile avviare fotocamera e microfono. Verifica i permessi Android e riprova.';
+      setCameraActive(false);
+      setPermissionError(message);
       return null;
     }
   }, []);
@@ -160,28 +200,21 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
       });
     }, 12000);
 
-    // Auto-create or join transmission session
+    // Join only a session generated by the control center; otherwise wait for manual pairing.
+    if (!initialSessionId && !manualJoinRequested) {
+      return () => { clearInterval(batteryInterval); wakeLockRef.current.release(); };
+    }
     let isMounted = true;
     async function startTransmissionSession() {
-      await initLocalStream('environment');
+      const initialStream = await initLocalStream('environment');
+      if (!initialStream || !isMounted) return;
 
       try {
-        let activeSessionId = initialSessionId;
-        let activePin = initialPin;
-
-        if (!activeSessionId) {
-          // Create session as Camera node
-          const res = await fetch('/api/signaling/create', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: deviceName }),
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            activeSessionId = data.sessionId;
-            activePin = data.pin;
-          }
+        let activeSessionId = initialSessionId || sessionId.trim();
+        let activePin = initialPin || pin.trim();
+        if (!activeSessionId || !activePin) {
+          setManualJoinError('Inserisci il codice sessione e il PIN generati dal Centro di controllo.');
+          return;
         }
 
         if (!activeSessionId || !isMounted) return;
@@ -189,23 +222,75 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         setSessionId(activeSessionId);
         if (activePin) setPin(activePin);
 
-        // Generate pairing QR data URL
-        const pairUrl = `${window.location.origin}/#camera&session=${activeSessionId}&pin=${activePin}`;
-        generateQrDataUrl(pairUrl).then((url) => {
-          if (isMounted) setQrDataUrl(url);
-        });
+        // Confirm a live stream is now attached before the UI claims transmission is active.
+        if (localStreamRef.current?.getVideoTracks().some((track) => track.readyState === 'live')) {
+          setPermissionError(null);
+        } else {
+          setPermissionError('Sessione creata ma fotocamera non attiva. Controlla i permessi e riprova.');
+          return;
+        }
 
-        // Initialize WebRTC and Signaling
-        const signaling = new SignalingClient(activeSessionId, 'camera');
+        // Join and validate the control-center session before sending any WebRTC messages.
+        const joinResponse = await apiFetch('/api/signaling/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: activeSessionId,
+            pin: activePin,
+            cameraInfo: { resolution: '1280x720', facing: 'environment' },
+          }),
+        });
+        if (!joinResponse.ok) {
+          const joinData = await joinResponse.json().catch(() => ({}));
+          throw new Error(joinData.error || 'Sessione non valida o scaduta. Genera un nuovo QR dal Centro di controllo.');
+        }
+
+        // Initialize WebRTC and Signaling only after the server accepts the pairing.
+        const signaling = new SignalingClient(activeSessionId, 'camera', activePin || pin);
         signalingRef.current = signaling;
 
         const pc = new RTCPeerConnection(createPeerConnectionConfig());
         peerConnectionRef.current = pc;
+        const logWebRtc = (event: string, details: Record<string, unknown> = {}) => {
+          const payload = { event, sourceAt: new Date().toISOString(), details };
+          console.info('[CamGuard][WebRTC][TELEFONO]', payload);
+          void signaling.sendMessage('status', { cameraInfo: { webrtcDiagnostic: payload } });
+        };
+        logWebRtc('PeerConnection creata', {
+          connectionState: pc.connectionState,
+          iceConnectionState: pc.iceConnectionState,
+          signalingState: pc.signalingState,
+        });
+        // The viewer's ICE candidates may arrive before its SDP answer due to polling.
+        // Queue them until setRemoteDescription succeeds, then apply them in order.
+        const pendingIceCandidates: RTCIceCandidateInit[] = [];
+        const flushPendingIceCandidates = async () => {
+          while (pendingIceCandidates.length > 0 && pc.remoteDescription) {
+            const candidate = pendingIceCandidates.shift();
+            if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          }
+        };
 
-        if (localStreamRef.current) {
-          localStreamRef.current.getTracks().forEach((track) => {
-            pc.addTrack(track, localStreamRef.current!);
+        // Create the media sections explicitly before the first offer. The phone
+        // is the offerer and must publish video immediately; audio stays negotiated
+        // bidirectionally so intercom does not require a second competing offer.
+        const initialTracks = localStreamRef.current?.getTracks() ?? [];
+        const initialVideoTrack = initialTracks.find((track) => track.kind === 'video');
+        const initialAudioTrack = initialTracks.find((track) => track.kind === 'audio');
+        if (!initialVideoTrack) {
+          throw new Error('Nessuna traccia video disponibile per la negoziazione iniziale.');
+        }
+        pc.addTransceiver(initialVideoTrack, {
+          direction: 'sendonly',
+          streams: localStreamRef.current ? [localStreamRef.current] : [],
+        });
+        if (initialAudioTrack) {
+          pc.addTransceiver(initialAudioTrack, {
+            direction: 'sendrecv',
+            streams: localStreamRef.current ? [localStreamRef.current] : [],
           });
+        } else {
+          pc.addTransceiver('audio', { direction: 'recvonly' });
         }
 
         pc.ontrack = (event) => {
@@ -222,7 +307,28 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
           }
         };
 
+        pc.oniceconnectionstatechange = () => {
+          logWebRtc('iceconnectionstatechange', {
+            state: pc.iceConnectionState,
+            connectionState: pc.connectionState,
+            signalingState: pc.signalingState,
+          });
+        };
+        pc.onsignalingstatechange = () => {
+          logWebRtc('signalingstatechange', {
+            state: pc.signalingState,
+            localDescriptionType: pc.localDescription?.type ?? null,
+            remoteDescriptionType: pc.remoteDescription?.type ?? null,
+            localHasVideoMLine: /(^|\\r?\\n)m=video /m.test(pc.localDescription?.sdp ?? ''),
+            remoteHasVideoMLine: /(^|\\r?\\n)m=video /m.test(pc.remoteDescription?.sdp ?? ''),
+          });
+        };
         pc.onconnectionstatechange = () => {
+          logWebRtc('connectionstatechange', {
+            state: pc.connectionState,
+            iceConnectionState: pc.iceConnectionState,
+            signalingState: pc.signalingState,
+          });
           if (pc.connectionState === 'connected') {
             setViewerCount(1);
           } else if (
@@ -235,19 +341,43 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
 
         signaling.onMessage(async (msg) => {
           if (msg.type === 'offer') {
+            const remoteSdp = String(msg.payload?.sdp ?? '');
+            logWebRtc('SDP OFFERTA ricevuta dal centro di controllo', {
+              type: msg.payload?.type ?? null,
+              hasVideoMLine: /(^|\\r?\\n)m=video /m.test(remoteSdp),
+              sdpLength: remoteSdp.length,
+            });
+            // Recover from offer glare if an older dashboard sends a second offer.
+            if (pc.signalingState === 'have-local-offer') {
+              await pc.setLocalDescription({ type: 'rollback' });
+            }
             await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+            // The dashboard viewer may renegotiate when enabling the intercom.
+            // Apply ICE gathered before the offer so video and audio work independently.
+            await flushPendingIceCandidates();
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             await signaling.sendMessage('answer', answer);
             setViewerCount(1);
           } else if (msg.type === 'answer') {
+            const remoteSdp = String(msg.payload?.sdp ?? '');
+            logWebRtc('SDP RISPOSTA ricevuta dal centro di controllo', {
+              type: msg.payload?.type ?? null,
+              hasVideoMLine: /(^|\\r?\\n)m=video /m.test(remoteSdp),
+              sdpLength: remoteSdp.length,
+            });
             if (pc.signalingState !== 'stable') {
               await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+              await flushPendingIceCandidates();
             }
             setViewerCount(1);
           } else if (msg.type === 'candidate' && msg.payload) {
             try {
-              await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+              if (pc.remoteDescription) {
+                await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+              } else {
+                pendingIceCandidates.push(msg.payload as RTCIceCandidateInit);
+              }
             } catch (err) {
               console.warn('ICE error', err);
             }
@@ -270,12 +400,26 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         });
 
         // Announce readiness
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: false,
+        // The phone must negotiate its camera video from the first offer.
+        // Previously video was explicitly disabled here, so the dashboard only
+        // began receiving frames after pressing Talk caused an audio renegotiation.
+        // Tracks/transceivers above define the media sections. Do not rely on
+        // legacy offerToReceiveVideo flags, which are ignored by some WebViews.
+        const offer = await pc.createOffer();
+        logWebRtc('SDP OFFERTA creata', {
+          type: offer.type,
+          hasVideoMLine: /(^|\\r?\\n)m=video /m.test(offer.sdp ?? ''),
+          hasAudioMLine: /(^|\\r?\\n)m=audio /m.test(offer.sdp ?? ''),
+          sdpLength: offer.sdp?.length ?? 0,
         });
         await pc.setLocalDescription(offer);
-        await signaling.sendMessage('offer', offer);
+        const localSdp = pc.localDescription?.sdp ?? offer.sdp ?? '';
+        logWebRtc('SDP OFFERTA impostata come localDescription', {
+          type: pc.localDescription?.type ?? offer.type,
+          hasVideoMLine: /(^|\\r?\\n)m=video /m.test(localSdp),
+          sdpLength: localSdp.length,
+        });
+        await signaling.sendMessage('offer', pc.localDescription ?? offer);
       } catch (err) {
         console.error('Error starting transmission', err);
       }
@@ -300,7 +444,7 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         peerConnectionRef.current.close();
       }
     };
-  }, []);
+  }, [permissionRetryCount, manualJoinRequested]);
 
   // Torch control
   const toggleTorch = useCallback(async (state?: boolean) => {
@@ -401,14 +545,6 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
     onExit();
   };
 
-  // Copy connection pairing link
-  const copyLink = () => {
-    const pairUrl = `${window.location.origin}/?pair=camera&session=${sessionId}&pin=${pin}`;
-    navigator.clipboard.writeText(pairUrl);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
-  };
-
   // -------------------------------------------------------------
   // BLACK SCREEN (Foreground Service Energy Saver)
   // -------------------------------------------------------------
@@ -488,11 +624,11 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
 
             <div className="px-3.5 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/15 flex items-center gap-2.5 shadow-lg">
               <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F87171] opacity-80" />
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-[#F87171]" />
+                {cameraActive && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#34D399] opacity-80" />}
+                <span className={`relative inline-flex rounded-full h-3 w-3 ${cameraActive ? 'bg-[#34D399]' : 'bg-[#F87171]'}`} />
               </span>
               <span className="text-xs font-black uppercase tracking-wider text-white">
-                IN TRASMISSIONE
+                {cameraActive ? 'FOTOCAMERA ATTIVA' : 'FOTOCAMERA NON ATTIVA'}
               </span>
             </div>
 
@@ -527,14 +663,6 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
               </div>
             )}
 
-            {/* QR Pairing Modal Trigger */}
-            <button
-              onClick={() => setQrModalOpen(true)}
-              className="p-2 rounded-full bg-black/60 hover:bg-black/80 text-[#4FC3F7] backdrop-blur-md border border-white/15 transition-all shadow-md active:scale-90"
-              title="Mostra codice QR per Viewer"
-            >
-              <QrCode className="w-4 h-4" />
-            </button>
           </div>
         </header>
 
@@ -608,7 +736,10 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
             <h2 className="text-xl font-bold text-white">Accesso Richiesto</h2>
             <p className="text-sm text-[#94A3B8] max-w-md">{permissionError}</p>
             <button
-              onClick={() => initLocalStream('environment')}
+              onClick={() => {
+                // Re-run the effect so it cleans up old media and requests permissions once.
+                setPermissionRetryCount((count) => count + 1);
+              }}
               className="px-6 py-3 bg-[#4FC3F7] text-black font-extrabold rounded-2xl text-xs uppercase tracking-wider shadow-lg"
             >
               Riprova Permessi
@@ -637,68 +768,6 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         </footer>
       </div>
 
-      {/* QR Code / Share Pairing Modal */}
-      <AnimatePresence>
-        {qrModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-[#0B0F14]/90 backdrop-blur-md flex items-center justify-center p-5"
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-[#141A21] border border-[#1F2933] p-6 rounded-[26px] max-w-sm w-full text-center space-y-4 shadow-2xl relative"
-            >
-              <button
-                onClick={() => setQrModalOpen(false)}
-                className="absolute top-4 right-4 p-1.5 text-[#94A3B8] hover:text-white rounded-xl hover:bg-[#1C242E]"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <div className="w-10 h-10 rounded-2xl bg-[#4FC3F7]/12 text-[#4FC3F7] mx-auto flex items-center justify-center border border-[#4FC3F7]/25">
-                <QrCode className="w-5 h-5" />
-              </div>
-
-              <div>
-                <h3 className="text-base font-bold text-white tracking-tight">
-                  Collega telefono Viewer
-                </h3>
-                <p className="text-xs text-[#94A3B8] mt-1">
-                  Inquadra questo QR con l’altro dispositivo per visualizzare il feed.
-                </p>
-              </div>
-
-              <div className="p-3 bg-[#0B0F14] rounded-2xl border border-[#1F2933] inline-block shadow-inner">
-                {qrDataUrl ? (
-                  <img src={qrDataUrl} alt="QR Code" className="w-48 h-48 rounded-xl object-contain mx-auto" />
-                ) : (
-                  <div className="w-48 h-48 flex items-center justify-center text-[#64748B]">
-                    Generazione QR...
-                  </div>
-                )}
-              </div>
-
-              <div className="pt-1 space-y-2">
-                <div className="text-xs font-mono text-[#4FC3F7] font-bold">
-                  PIN di connessione: {pin || '------'}
-                </div>
-
-                <button
-                  onClick={copyLink}
-                  className="w-full py-2.5 px-4 bg-[#1C242E] hover:bg-[#242F3B] text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border border-[#1F2933] transition-all"
-                >
-                  {copiedLink ? <Check className="w-4 h-4 text-[#34D399]" /> : <Copy className="w-4 h-4" />}
-                  <span>{copiedLink ? 'Link Copiato!' : 'Copia link di accoppiamento'}</span>
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };

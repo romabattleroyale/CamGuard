@@ -115,10 +115,8 @@ export const DailyRecapModal: React.FC<DailyRecapModalProps> = ({
 
             <p className="text-sm sm:text-base font-semibold text-white leading-relaxed">
               {events.length > 0
-                ? `Oggi: ${motionEvents.length} movimenti rilevati, ultimo in ${
-                    motionEvents[0]?.cameraName || 'Salotto'
-                  }. Nessuna attività insolita rilevata sul perimetro.`
-                : 'Giornata tranquilla. Nessun movimento rilevato nelle zone monitorate.'}
+                ? `Eventi registrati oggi: ${events.length}; movimenti rilevati: ${motionEvents.length}.`
+                : 'Non ci sono ancora eventi reali. Il riepilogo si popolerà quando le telecamere collegate genereranno rilevazioni.'}
             </p>
 
             {/* Quick Metrics */}
@@ -133,7 +131,7 @@ export const DailyRecapModal: React.FC<DailyRecapModalProps> = ({
               </div>
               <div className="p-3 bg-[#0B0F14]/70 rounded-xl border border-[#1F2933]">
                 <span className="text-[10px] font-bold uppercase text-[#94A3B8] block">Stato Rete</span>
-                <span className="text-xs font-bold text-[#34D399] block mt-1">Conforme LAN</span>
+                <span className="text-xs font-bold text-[#34D399] block mt-1">{cameras.length ? 'Da verificare' : 'Nessun dispositivo'}</span>
               </div>
             </div>
           </div>
@@ -207,7 +205,7 @@ export const DailyRecapModal: React.FC<DailyRecapModalProps> = ({
                             <span className="text-xs font-bold text-white block">
                               {evt.description}
                             </span>
-                            <span className="text-[10px] text-[#64748B]">Verifica automatica LAN</span>
+                            <span className="text-[10px] text-[#64748B]">Evento registrato</span>
                           </div>
                         </div>
                         <span className="text-[11px] font-mono text-[#94A3B8]">{evt.timeAgo}</span>

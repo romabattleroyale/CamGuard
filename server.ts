@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import os from 'os';
 import path from 'path';
+import { randomInt, randomUUID } from 'node:crypto';
 
 interface SignalingMessage {
   id: string;
@@ -33,7 +34,59 @@ interface Session {
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-app.use(express.json());
+// Render terminates HTTPS before forwarding requests to the Node process.
+app.set('trust proxy', 1);
+
+// Allow the hosted web app plus the known Capacitor WebView origins.
+// Keep this scoped rather than enabling CORS for every arbitrary website.
+const allowedCorsOrigins = new Set([
+  'https://camguard-signaling.onrender.com',
+  'https://localhost',
+  'capacitor://localhost',
+  'http://localhost',
+]);
+app.use((req: Request, res: Response, next) => {
+  const origin = req.get('origin');
+  let isAllowedOrigin = !origin || allowedCorsOrigins.has(origin);
+  if (origin && !isAllowedOrigin) {
+    try {
+      const parsedOrigin = new URL(origin);
+      isAllowedOrigin =
+        parsedOrigin.hostname === 'localhost' &&
+        ['http:', 'https:', 'capacitor:'].includes(parsedOrigin.protocol);
+    } catch {
+      isAllowedOrigin = false;
+    }
+  }
+
+  if (origin && isAllowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Max-Age', '600');
+  }
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(isAllowedOrigin ? 204 : 403);
+  }
+  next();
+});
+
+// Bound JSON payload size so signaling endpoints cannot accept arbitrary large bodies.
+app.use(express.json({ limit: '256kb' }));
+
+const allowedMessageTypes = new Set([
+  'offer',
+  'answer',
+  'candidate',
+  'command',
+  'status',
+  'disconnect',
+]);
+function isValidRole(value: unknown): value is 'viewer' | 'camera' {
+  return value === 'viewer' || value === 'camera';
+}
 
 // In-memory sessions store (kept for 2 hours)
 const sessions = new Map<string, Session>();
@@ -81,17 +134,18 @@ app.get('/api/lan-info', (req: Request, res: Response) => {
 
 // Create new camera session (initiated by Viewer)
 app.post('/api/signaling/create', (req: Request, res: Response) => {
-  const id = 'cam_' + Math.random().toString(36).substring(2, 9);
-  // 6-digit numeric PIN
-  let pin = Math.floor(100000 + Math.random() * 900000).toString();
-  while (pinIndex.has(pin)) {
-    pin = Math.floor(100000 + Math.random() * 900000).toString();
-  }
+  const id = `cam_${randomUUID()}`;
+  // Use a cryptographically secure 6-digit PIN and avoid collisions.
+  let pin = '';
+  do {
+    pin = String(randomInt(100000, 1000000));
+  } while (pinIndex.has(pin));
 
+  const requestedName = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
   const session: Session = {
     id,
     pin,
-    name: req.body.name || 'Telefono Camera',
+    name: (requestedName || 'Telefono Camera').slice(0, 80),
     createdAt: Date.now(),
     lastPing: Date.now(),
     messages: [],
@@ -109,11 +163,11 @@ app.post('/api/signaling/create', (req: Request, res: Response) => {
 
 // Join an existing session (initiated by Camera phone)
 app.post('/api/signaling/join', (req: Request, res: Response) => {
-  const { sessionId, pin, cameraInfo } = req.body;
-  let targetSessionId = sessionId;
+  const { sessionId, pin, cameraInfo } = req.body ?? {};
+  let targetSessionId = typeof sessionId === 'string' ? sessionId : '';
 
-  if (!targetSessionId && pin) {
-    targetSessionId = pinIndex.get(String(pin).trim());
+  if (!targetSessionId && typeof pin === 'string') {
+    targetSessionId = pinIndex.get(pin.trim()) || '';
   }
 
   if (!targetSessionId || !sessions.has(targetSessionId)) {
@@ -122,6 +176,12 @@ app.post('/api/signaling/join', (req: Request, res: Response) => {
   }
 
   const session = sessions.get(targetSessionId)!;
+  const suppliedPin = typeof pin === 'string' ? pin.trim() : '';
+  if (!suppliedPin || suppliedPin !== session.pin) {
+    res.status(403).json({ error: 'PIN di abbinamento non valido' });
+    return;
+  }
+
   session.lastPing = Date.now();
   if (cameraInfo) {
     session.cameraInfo = { ...session.cameraInfo, ...cameraInfo };
@@ -155,15 +215,33 @@ app.post('/api/signaling/:sessionId/message', (req: Request, res: Response) => {
     return;
   }
 
-  session.lastPing = Date.now();
-  const { sender, type, payload } = req.body;
-  const target = sender === 'viewer' ? 'camera' : 'viewer';
+  const suppliedPin = typeof req.body?.pin === 'string' ? req.body.pin.trim() : '';
+  if (!suppliedPin || suppliedPin !== session.pin) {
+    res.status(403).json({ error: 'PIN di abbinamento non valido' });
+    return;
+  }
 
+  session.lastPing = Date.now();
+  const { sender, type, payload } = req.body ?? {};
+  if (!isValidRole(sender) || typeof type !== 'string' || !allowedMessageTypes.has(type)) {
+    res.status(400).json({ error: 'Ruolo o tipo di messaggio non valido' });
+    return;
+  }
+  if (payload === undefined || (typeof payload !== 'object' && typeof payload !== 'string')) {
+    res.status(400).json({ error: 'Payload non valido' });
+    return;
+  }
+
+  const target = sender === 'viewer' ? 'camera' : 'viewer';
+  const requestedId = typeof req.body?.id === 'string' ? req.body.id : '';
+  const safeId = /^msg_[a-zA-Z0-9_-]{1,100}$/.test(requestedId)
+    ? requestedId
+    : `msg_${randomUUID()}`;
   const message: SignalingMessage = {
-    id: 'msg_' + Math.random().toString(36).substring(2, 9),
+    id: safeId,
     sender,
     target,
-    type,
+    type: type as SignalingMessage['type'],
     payload,
     timestamp: Date.now(),
   };
@@ -185,12 +263,25 @@ app.post('/api/signaling/:sessionId/message', (req: Request, res: Response) => {
 // Poll messages intended for this role
 app.get('/api/signaling/:sessionId/messages', (req: Request, res: Response) => {
   const { sessionId } = req.params;
-  const role = req.query.role as 'viewer' | 'camera';
-  const since = parseInt(req.query.since as string, 10) || 0;
+  const rawRole = req.query.role;
+  if (!isValidRole(rawRole)) {
+    res.status(400).json({ error: 'Ruolo non valido' });
+    return;
+  }
+  const role = rawRole;
+  const rawSince = req.query.since;
+  const parsedSince = typeof rawSince === 'string' ? Number(rawSince) : 0;
+  const since = Number.isFinite(parsedSince) && parsedSince >= 0 ? parsedSince : 0;
 
   const session = sessions.get(sessionId);
   if (!session) {
     res.status(404).json({ error: 'Sessione scaduta' });
+    return;
+  }
+
+  const suppliedPin = typeof req.query.pin === 'string' ? req.query.pin.trim() : '';
+  if (!suppliedPin || suppliedPin !== session.pin) {
+    res.status(403).json({ error: 'PIN di abbinamento non valido' });
     return;
   }
 
@@ -209,14 +300,25 @@ app.get('/api/signaling/:sessionId/messages', (req: Request, res: Response) => {
   });
 });
 
-// Terminate or remove session
+// Terminate or remove session. The session PIN is required to prevent
+// anyone who only knows the session ID from disconnecting a camera.
 app.post('/api/signaling/:sessionId/leave', (req: Request, res: Response) => {
   const { sessionId } = req.params;
   const session = sessions.get(sessionId);
-  if (session) {
-    if (session.pin) pinIndex.delete(session.pin);
-    sessions.delete(sessionId);
+
+  if (!session) {
+    res.status(404).json({ error: 'Sessione scaduta o inesistente' });
+    return;
   }
+
+  const suppliedPin = typeof req.body?.pin === 'string' ? req.body.pin.trim() : '';
+  if (!suppliedPin || suppliedPin !== session.pin) {
+    res.status(403).json({ error: 'PIN di abbinamento non valido' });
+    return;
+  }
+
+  pinIndex.delete(session.pin);
+  sessions.delete(sessionId);
   res.json({ success: true });
 });
 

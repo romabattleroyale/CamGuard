@@ -15,11 +15,13 @@ import {
   ShieldCheck,
   Lock,
   Server,
-  Layers
+  Layers,
+  AlertTriangle
 } from 'lucide-react';
 import { CameraDevice } from '../../types/camera';
 import { generateQrDataUrl } from '../../utils/qr';
 import { SignalingClient } from '../../services/webrtc';
+import { apiFetch, getSignalingBaseUrl } from '../../services/api';
 
 interface AddCameraModalProps {
   isOpen: boolean;
@@ -36,18 +38,22 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
 
   // IP Camera Form State
   const [ipBrand, setIpBrand] = useState<'tapo' | 'ezviz' | 'reolink' | 'generic'>('tapo');
-  const [ipName, setIpName] = useState('Telecamera Tapo Salotto');
-  const [ipAddress, setIpAddress] = useState('192.168.1.120');
+  const [ipName, setIpName] = useState('');
+  const [ipAddress, setIpAddress] = useState('');
   const [ipPort, setIpPort] = useState('554');
-  const [ipUsername, setIpUsername] = useState('admin');
+  const [ipUsername, setIpUsername] = useState('');
   const [ipPassword, setIpPassword] = useState('');
-  const [ipStreamPath, setIpStreamPath] = useState('/stream1');
-  const [ipSimulateTest, setIpSimulateTest] = useState(true);
+  const [ipStreamPath, setIpStreamPath] = useState('');
+  const [ipSimulateTest] = useState(false);
+  const [ipTestStatus, setIpTestStatus] = useState<'idle' | 'checking' | 'error'>('idle');
+  const [ipTestMessage, setIpTestMessage] = useState('Inserisci i dati reali della telecamera. Il relay RTSP/ONVIF non è ancora configurato, quindi la registrazione della telecamera IP resta disabilitata.');
 
   // Phone Camera Pairing State
   const [sessionId, setSessionId] = useState<string>('');
   const [pin, setPin] = useState<string>('');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [pairingError, setPairingError] = useState<string>('');
+  const [pairingAttempt, setPairingAttempt] = useState(0);
   const [pairingUrl, setPairingUrl] = useState<string>('');
   const [phoneCamName, setPhoneCamName] = useState('Vecchio Telefono (Camera)');
   const [isPhoneConnected, setIsPhoneConnected] = useState(false);
@@ -59,19 +65,11 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
   // Sync stream path when brand changes
   const handleBrandChange = (brand: 'tapo' | 'ezviz' | 'reolink' | 'generic') => {
     setIpBrand(brand);
-    if (brand === 'tapo') {
-      setIpName('Tapo C200 Salotto');
-      setIpStreamPath('/stream1');
-    } else if (brand === 'ezviz') {
-      setIpName('EZVIZ C6N Ingresso');
-      setIpStreamPath('/h264Preview_01_main');
-    } else if (brand === 'reolink') {
-      setIpName('Reolink E1 Giardino');
-      setIpStreamPath('/h264Preview_01_main');
-    } else {
-      setIpName('Telecamera IP RTSP');
-      setIpStreamPath('/live/ch0');
-    }
+    // Brand selection is only a label; do not silently invent a camera path or model.
+    setIpName('');
+    setIpStreamPath('');
+    setIpTestStatus('idle');
+    setIpTestMessage('Inserisci il nome e il percorso RTSP esatti del tuo dispositivo. La compatibilità va verificata dal relay.');
   };
 
   // Setup session when "phone" is selected
@@ -88,8 +86,18 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
 
     async function initPhoneSession() {
       try {
-        const lanRes = await fetch('/api/lan-info');
-        let hostUrl = window.location.origin;
+        setPairingError('');
+        setQrDataUrl('');
+        setSessionId('');
+        setPin('');
+        setPairingUrl('');
+        const serverBaseUrl = getSignalingBaseUrl();
+        const lanRes = await apiFetch('/api/lan-info');
+        const lanContentType = lanRes.headers.get('content-type') || '';
+        if (!lanRes.ok || !lanContentType.includes('application/json')) {
+          throw new Error(`L'indirizzo del server configurato (${serverBaseUrl}) non sta restituendo le API CamGuard. Apri Impostazioni → Server di segnalazione e inserisci l'URL del backend, non quello di una pagina web generica.`);
+        }
+        let hostUrl = serverBaseUrl;
         if (lanRes.ok) {
           const lanData = await lanRes.json();
           if (lanData.localIp && lanData.localIp !== 'localhost') {
@@ -98,21 +106,28 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
           }
         }
 
-        const createRes = await fetch('/api/signaling/create', {
+        const createRes = await apiFetch('/api/signaling/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: phoneCamName }),
         });
 
-        if (!createRes.ok || !isMounted) return;
+        const createContentType = createRes.headers.get('content-type') || '';
+        if (!createRes.ok || !createContentType.includes('application/json')) {
+          throw new Error(`Il server (${serverBaseUrl}) non ha restituito una risposta API valida (HTTP ${createRes.status}). Probabilmente l'URL configurato punta alla pagina web e non al backend CamGuard.`);
+        }
+        if (!isMounted) return;
         const data = await createRes.json();
+        if (!data.sessionId || !data.pin) {
+          throw new Error('Il server non ha restituito il codice PIN e la sessione. Controlla la configurazione del backend.');
+        }
         const sId = data.sessionId;
         const sPin = data.pin;
 
         setSessionId(sId);
         setPin(sPin);
 
-        const pairTarget = `${window.location.origin}/#camera&session=${sId}&pin=${sPin}`;
+        const pairTarget = `${serverBaseUrl}/?mode=camera&session=${encodeURIComponent(sId)}&pin=${encodeURIComponent(sPin)}`;
         setPairingUrl(pairTarget);
 
         const qrUrl = await generateQrDataUrl(pairTarget);
@@ -120,7 +135,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
           setQrDataUrl(qrUrl);
         }
 
-        const signaling = new SignalingClient(sId, 'viewer');
+        const signaling = new SignalingClient(sId, 'viewer', sPin);
         signalingRef.current = signaling;
 
         signaling.onMessage((msg) => {
@@ -130,6 +145,9 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
         });
       } catch (err) {
         console.error('Failed to init phone pairing session', err);
+        if (isMounted) {
+          setPairingError(err instanceof Error ? err.message : 'Impossibile contattare il server di collegamento. Controlla la connessione e l’URL del server CamGuard.');
+        }
       }
     }
 
@@ -142,43 +160,43 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
         signalingRef.current = null;
       }
     };
-  }, [selectedType, isOpen]);
+  }, [selectedType, isOpen, pairingAttempt]);
 
   if (!isOpen) return null;
 
   const handleAddIpCamera = (e: React.FormEvent) => {
     e.preventDefault();
-    const newCam: CameraDevice = {
-      id: 'ip_' + Math.random().toString(36).substring(2, 9),
-      name: ipName || 'Telecamera IP',
-      type: 'ip',
-      brand: ipBrand,
-      status: 'online',
-      ip: ipAddress,
-      port: parseInt(ipPort, 10) || 554,
-      username: ipUsername,
-      password: ipPassword,
-      streamPath: ipStreamPath,
-      rtspUrl: `rtsp://${ipUsername ? ipUsername + ':***@' : ''}${ipAddress}:${ipPort}${ipStreamPath}`,
-      isSimulated: ipSimulateTest,
-      ptzSupport: true,
-      currentPan: 0,
-      currentTilt: 0,
-      createdAt: Date.now(),
-    };
+    const cleanAddress = ipAddress.trim();
+    const cleanName = ipName.trim();
+    const cleanPath = ipStreamPath.trim();
+    const port = Number(ipPort);
 
-    onAddCamera(newCam);
-    onClose();
+    if (!cleanName || !cleanAddress || !cleanPath || !Number.isInteger(port) || port < 1 || port > 65535) {
+      setIpTestStatus('error');
+      setIpTestMessage('Compila nome, indirizzo IP, porta valida e percorso RTSP reale.');
+      return;
+    }
+
+    // The browser cannot validate RTSP directly and this app has no RTSP relay yet.
+    // Do not save the camera as online or claim a successful connection.
+    setIpTestStatus('error');
+    setIpTestMessage('Telecamera non aggiunta: il relay RTSP/ONVIF reale non è ancora configurato. Non verrà mostrata come collegata finché il flusso non sarà verificato.');
   };
 
   const handleAddPhoneCamera = () => {
+    if (!sessionId || !pin || !isPhoneConnected) {
+      setIpTestStatus('error');
+      setIpTestMessage('Il telefono non risulta collegato al server di segnalazione. Non è stato aggiunto.');
+      return;
+    }
     const newPhoneCam: CameraDevice = {
       id: sessionId || 'phone_' + Math.random().toString(36).substring(2, 9),
-      name: phoneCamName || 'Telefono Camera',
+      name: phoneCamName.trim() || 'Telefono Camera',
       type: 'phone',
       status: isPhoneConnected ? 'online' : 'connecting',
       sessionId,
       pin,
+      signalingBaseUrl: window.localStorage.getItem('camguard_signaling_server_url') || window.location.origin,
       batteryLevel: 85,
       isCharging: true,
       facingMode: 'environment',
@@ -399,7 +417,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                     value={ipName}
                     onChange={(e) => setIpName(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-[#0B0F14] border border-[#1F2933] rounded-xl text-sm text-white focus:outline-none focus:border-[#4FC3F7] transition-colors"
-                    placeholder="Es. Salotto Tapo C200"
+                    placeholder="Nome reale della telecamera"
                   />
                 </motion.div>
 
@@ -415,7 +433,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                       value={ipAddress}
                       onChange={(e) => setIpAddress(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-[#0B0F14] border border-[#1F2933] rounded-xl text-sm text-white font-mono focus:outline-none focus:border-[#4FC3F7]"
-                      placeholder="192.168.1.100"
+                      placeholder="Indirizzo IP della telecamera"
                     />
                   </div>
                   <div>
@@ -470,27 +488,17 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                     value={ipStreamPath}
                     onChange={(e) => setIpStreamPath(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-[#0B0F14] border border-[#1F2933] rounded-xl text-sm text-white font-mono focus:outline-none focus:border-[#4FC3F7]"
-                    placeholder="/stream1"
+                    placeholder="Percorso RTSP dichiarato dal produttore"
                   />
                   <p className="text-[11px] text-[#64748B] mt-1 font-mono">
                     Tapo: /stream1 • EZVIZ: /h264Preview_01_main
                   </p>
                 </motion.div>
 
-                {/* Simulation checkbox */}
-                <motion.div variants={itemVariants}>
-                  <label className="flex items-center gap-3 p-3.5 rounded-2xl bg-[#1C242E]/70 border border-[#1F2933] cursor-pointer hover:border-[#2D3A47] transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={ipSimulateTest}
-                      onChange={(e) => setIpSimulateTest(e.target.checked)}
-                      className="w-4 h-4 rounded text-[#4FC3F7] bg-[#0B0F14] border-[#1F2933]"
-                    />
-                    <div className="text-xs">
-                      <span className="font-bold text-white">Abilita feed di test simulato con OSD</span>
-                      <p className="text-[#94A3B8]">Genera feed live con telemetria e controlli PTZ Pan/Tilt</p>
-                    </div>
-                  </label>
+                <motion.div variants={itemVariants} className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-100">
+                  <p className="font-bold">Connessione RTSP non ancora disponibile</p>
+                  <p className="mt-1">Questa versione non dispone ancora del relay video necessario a visualizzare flussi RTSP. Non verrà creata una telecamera demo o dichiarata online senza verifica reale.</p>
+                  <p className="mt-2">{ipTestMessage}</p>
                 </motion.div>
 
                 {/* Shimmer Submit Button */}
@@ -504,9 +512,11 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                   </button>
                   <button
                     type="submit"
-                    className="animate-shimmer px-6 py-2.5 bg-gradient-to-r from-[#4FC3F7] to-[#38BDF8] text-black font-extrabold rounded-xl text-xs tracking-wider uppercase transition-all shadow-lg shadow-[#4FC3F7]/25 active:scale-95"
+                    disabled
+                    className="px-6 py-2.5 bg-[#475569] text-slate-200 font-extrabold rounded-xl text-xs tracking-wider uppercase cursor-not-allowed opacity-70"
+                    title="Disponibile quando sarà configurato il relay RTSP/ONVIF"
                   >
-                    Aggiungi Telecamera IP
+                    RTSP non ancora disponibile
                   </button>
                 </motion.div>
               </motion.div>
@@ -568,6 +578,20 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                 variants={itemVariants}
                 className="p-5 bg-[#0B0F14] rounded-[24px] border border-[#1F2933] flex flex-col sm:flex-row items-center gap-6 justify-center"
               >
+                {pairingError && (
+                  <div role="alert" className="w-full rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">
+                    <strong className="block mb-1">Collegamento non disponibile</strong>
+                    {pairingError}
+                    <button
+                      type="button"
+                      onClick={() => setPairingAttempt((attempt) => attempt + 1)}
+                      className="mt-3 rounded-lg border border-rose-300/30 px-3 py-2 text-xs font-bold text-rose-100 hover:bg-rose-400/10"
+                    >
+                      Riprova collegamento
+                    </button>
+                  </div>
+                )}
+
                 {/* QR Code */}
                 <div className="shrink-0 flex flex-col items-center">
                   <div className="relative p-2.5 bg-[#141A21] border-2 border-[#4FC3F7]/40 rounded-2xl shadow-xl">
@@ -577,6 +601,11 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                         alt="QR Code accoppiamento telefono"
                         className="w-44 h-44 rounded-xl object-contain"
                       />
+                    ) : pairingError ? (
+                      <div className="w-44 h-44 flex flex-col items-center justify-center gap-2 text-[#FCA5A5] text-center px-4">
+                        <AlertTriangle className="w-8 h-8" />
+                        <span className="text-xs font-semibold">QR non disponibile</span>
+                      </div>
                     ) : (
                       <div className="w-44 h-44 flex items-center justify-center text-[#64748B]">
                         <span className="w-6 h-6 border-2 border-[#4FC3F7] border-t-transparent rounded-full animate-spin" />
