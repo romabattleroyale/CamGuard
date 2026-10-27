@@ -55,6 +55,7 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
   const [isBlackScreen, setIsBlackScreen] = useState<boolean>(false);
   const [isSirenActive, setIsSirenActive] = useState<boolean>(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
   const [permissionRetryCount, setPermissionRetryCount] = useState(0);
 
   // Motion Detection
@@ -86,6 +87,7 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
   // 1. Initialize Camera and Microphone (Rear Camera by default)
   const initLocalStream = useCallback(async (facing: 'environment' | 'user') => {
     setPermissionError(null);
+    setCameraActive(false);
     try {
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -122,6 +124,7 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
       }
 
       localStreamRef.current = stream;
+      setCameraActive(Boolean(stream.getVideoTracks().some((track) => track.readyState === 'live')));
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -170,6 +173,7 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
           : errorName === 'MEDIA_UNAVAILABLE'
           ? 'Questo WebView non espone l’API fotocamera. Verifica che l’APK sia aggiornato e che i permessi Android siano configurati.'
           : 'Impossibile avviare fotocamera e microfono. Verifica i permessi Android e riprova.';
+      setCameraActive(false);
       setPermissionError(message);
       return null;
     }
@@ -526,11 +530,11 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
 
             <div className="px-3.5 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/15 flex items-center gap-2.5 shadow-lg">
               <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#F87171] opacity-80" />
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-[#F87171]" />
+                {cameraActive && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#34D399] opacity-80" />}
+                <span className={`relative inline-flex rounded-full h-3 w-3 ${cameraActive ? 'bg-[#34D399]' : 'bg-[#F87171]'}`} />
               </span>
               <span className="text-xs font-black uppercase tracking-wider text-white">
-                IN TRASMISSIONE
+                {cameraActive ? 'FOTOCAMERA ATTIVA' : 'FOTOCAMERA NON ATTIVA'}
               </span>
             </div>
 
