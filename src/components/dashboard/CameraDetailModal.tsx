@@ -62,6 +62,34 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
   const [isBuffering, setIsBuffering] = useState(camera.type === 'phone');
   const [selectedQuality, setSelectedQuality] = useState<'HD' | '4K' | 'SD'>('HD');
   const [timelinePosition, setTimelinePosition] = useState(65); // percent
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [diagnosticEntries, setDiagnosticEntries] = useState<string[]>([]);
+  const [diagnosticSdp, setDiagnosticSdp] = useState({ local: '', remote: '' });
+  const [videoStats, setVideoStats] = useState<{
+    packetsReceived: number | null;
+    packetsLost: number | null;
+    bytesReceived: number | null;
+    bitrateBps: number | null;
+    framesReceived: number | null;
+    framesDecoded: number | null;
+    frameWidth: number | null;
+    frameHeight: number | null;
+    codec: string | null;
+    sampledAt: string | null;
+    error: string | null;
+  }>({
+    packetsReceived: null,
+    packetsLost: null,
+    bytesReceived: null,
+    bitrateBps: null,
+    framesReceived: null,
+    framesDecoded: null,
+    frameWidth: null,
+    frameHeight: null,
+    codec: null,
+    sampledAt: null,
+    error: null,
+  });
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
@@ -70,6 +98,142 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<BlobPart[]>([]);
   const recordingMimeRef = useRef<string>('video/webm');
+  const diagnosticEntriesRef = useRef<string[]>([]);
+  const lastVideoStatsRef = useRef<{ at: number; bytes: number } | null>(null);
+  const lastVideoTapAtRef = useRef(0);
+
+  const writeDiagnostic = (event: string, details?: Record<string, unknown>) => {
+    const suffix = details ? ` | ${JSON.stringify(details)}` : '';
+    const line = `${new Date().toISOString()} | ${event}${suffix}`;
+    diagnosticEntriesRef.current = [...diagnosticEntriesRef.current, line].slice(-300);
+    setDiagnosticEntries(diagnosticEntriesRef.current);
+    console.info('[CamGuard][WebRTC]', line);
+  };
+
+  const collectWebRtcStats = async () => {
+    const pc = peerConnectionRef.current;
+    if (!pc) {
+      setVideoStats((previous) => ({ ...previous, error: 'PeerConnection non disponibile' }));
+      writeDiagnostic('getStats non disponibile: PeerConnection assente');
+      return;
+    }
+    try {
+      const reports = await pc.getStats();
+      let inboundVideo: any = null;
+      let codecReport: any = null;
+      reports.forEach((report: any) => {
+        if (
+          report.type === 'inbound-rtp' &&
+          (report.kind === 'video' || report.mediaType === 'video') &&
+          report.isRemote !== true
+        ) {
+          inboundVideo = report;
+        }
+      });
+      if (!inboundVideo) {
+        throw new Error('getStats non contiene un record inbound-rtp video');
+      }
+      if (inboundVideo.codecId) codecReport = reports.get(inboundVideo.codecId) as any;
+      const now = Date.now();
+      const bytes = Number(inboundVideo.bytesReceived ?? 0);
+      const previous = lastVideoStatsRef.current;
+      const bitrateBps =
+        previous && now > previous.at && bytes >= previous.bytes
+          ? Math.round(((bytes - previous.bytes) * 8 * 1000) / (now - previous.at))
+          : null;
+      lastVideoStatsRef.current = { at: now, bytes };
+      const nextStats = {
+        packetsReceived: Number(inboundVideo.packetsReceived ?? 0),
+        packetsLost: Number(inboundVideo.packetsLost ?? 0),
+        bytesReceived: bytes,
+        bitrateBps,
+        framesReceived: Number(inboundVideo.framesReceived ?? 0),
+        framesDecoded: Number(inboundVideo.framesDecoded ?? 0),
+        frameWidth: Number(inboundVideo.frameWidth ?? 0),
+        frameHeight: Number(inboundVideo.frameHeight ?? 0),
+        codec: codecReport?.mimeType || codecReport?.codec || null,
+        sampledAt: new Date().toISOString(),
+        error: null as string | null,
+      };
+      setVideoStats(nextStats);
+      writeDiagnostic('getStats video inbound-rtp', {
+        packetsReceived: nextStats.packetsReceived,
+        packetsLost: nextStats.packetsLost,
+        bytesReceived: nextStats.bytesReceived,
+        bitrateBps: nextStats.bitrateBps,
+        framesReceived: nextStats.framesReceived,
+        framesDecoded: nextStats.framesDecoded,
+        frame: `${nextStats.frameWidth}x${nextStats.frameHeight}`,
+        codec: nextStats.codec,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setVideoStats((previous) => ({ ...previous, error: message, sampledAt: new Date().toISOString() }));
+      writeDiagnostic('ERRORE getStats', { message });
+    }
+  };
+
+  const exportWebRtcDiagnostics = () => {
+    writeDiagnostic('Esportazione diagnostica richiesta', {
+      connectionState: peerConnectionRef.current?.connectionState ?? 'no-pc',
+      signalingState: peerConnectionRef.current?.signalingState ?? 'no-pc',
+    });
+    const pc = peerConnectionRef.current;
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      camera: { id: camera.id, name: camera.name, sessionId: camera.sessionId },
+      peerConnection: pc
+        ? {
+            connectionState: pc.connectionState,
+            iceConnectionState: pc.iceConnectionState,
+            iceGatheringState: pc.iceGatheringState,
+            signalingState: pc.signalingState,
+            transceivers: pc.getTransceivers().map((transceiver) => ({
+              kind: transceiver.receiver.track.kind,
+              direction: transceiver.direction,
+              currentDirection: transceiver.currentDirection,
+              mid: transceiver.mid,
+              senderTrack: transceiver.sender.track?.kind ?? null,
+              receiverTrackState: transceiver.receiver.track.readyState,
+              receiverTrackMuted: transceiver.receiver.track.muted,
+            })),
+          }
+        : null,
+      sdp: {
+        local: pc?.localDescription?.sdp || diagnosticSdp.local,
+        remote: pc?.remoteDescription?.sdp || diagnosticSdp.remote,
+      },
+      stats: videoStats,
+      logs: diagnosticEntriesRef.current,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `camguard-webrtc-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+
+  const toggleDiagnosticsWithDoubleTap = () => {
+    const now = Date.now();
+    if (now - lastVideoTapAtRef.current < 450) {
+      setDiagnosticsOpen((open) => !open);
+      writeDiagnostic('Overlay diagnostica attivato tramite doppio tap');
+      lastVideoTapAtRef.current = 0;
+    } else {
+      lastVideoTapAtRef.current = now;
+    }
+  };
+
+  useEffect(() => {
+    if (!diagnosticsOpen) return;
+    void collectWebRtcStats();
+    const timer = window.setInterval(() => void collectWebRtcStats(), 2000);
+    return () => window.clearInterval(timer);
+  }, [diagnosticsOpen]);
 
   // Setup WebRTC connection for Phone Camera
   useEffect(() => {
@@ -80,6 +244,12 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
     signalingRef.current = signaling;
 
     const pc = new RTCPeerConnection(createPeerConnectionConfig());
+    writeDiagnostic('PeerConnection creata', {
+      sessionId: camera.sessionId,
+      iceConnectionState: pc.iceConnectionState,
+      connectionState: pc.connectionState,
+      signalingState: pc.signalingState,
+    });
     // The phone's offer already declares video. Only pre-create the bidirectional
     // audio section needed for intercom; do not duplicate the incoming video m-line.
     pc.addTransceiver('audio', { direction: 'sendrecv' });
@@ -110,6 +280,17 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
         remoteMediaStream.addTrack(track);
       }
 
+      writeDiagnostic('Evento ontrack', {
+        kind: track.kind,
+        trackId: track.id,
+        trackReadyState: track.readyState,
+        trackMuted: track.muted,
+        streamCount: event.streams?.length ?? 0,
+        streams: (event.streams ?? []).map((stream) => ({
+          id: stream.id,
+          tracks: stream.getTracks().map((item) => ({ kind: item.kind, id: item.id, state: item.readyState })),
+        })),
+      });
       const video = videoRef.current;
       if (!video || track.kind !== 'video') return;
       // Mobile Chrome/WebView may block autoplay of an unmuted remote stream.
@@ -117,26 +298,101 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
       video.muted = true;
       video.playsInline = true;
       video.autoplay = true;
-      video.srcObject = incomingStream || remoteMediaStream;
-      const markVideoReady = () => {
+      const attachedStream = incomingStream || remoteMediaStream;
+      video.srcObject = attachedStream;
+      writeDiagnostic('video.srcObject assegnato', {
+        streamId: attachedStream.id,
+        tracks: attachedStream.getTracks().map((item) => ({
+          kind: item.kind,
+          id: item.id,
+          readyState: item.readyState,
+          muted: item.muted,
+        })),
+        readyState: video.readyState,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        autoplay: video.autoplay,
+        muted: video.muted,
+        playsInline: video.playsInline,
+      });
+      const markVideoReady = (eventName: string) => {
+        writeDiagnostic(eventName, {
+          readyState: video.readyState,
+          videoWidth: video.videoWidth,
+          videoHeight: video.videoHeight,
+          currentTime: video.currentTime,
+          paused: video.paused,
+          networkState: video.networkState,
+          trackMuted: track.muted,
+        });
         if (video.videoWidth > 0 && video.videoHeight > 0) setIsBuffering(false);
       };
-      video.onloadeddata = markVideoReady;
-      video.onplaying = markVideoReady;
-      if (track.muted) track.onunmute = markVideoReady;
+      video.onloadedmetadata = () => markVideoReady('video onLoadedMetadata');
+      video.onloadeddata = () => markVideoReady('video onLoadedData');
+      video.onplay = () => markVideoReady('video onPlay');
+      video.onplaying = () => markVideoReady('video onPlaying');
+      video.onerror = () => writeDiagnostic('video onError', {
+        code: video.error?.code ?? null,
+        message: video.error?.message ?? null,
+        readyState: video.readyState,
+        networkState: video.networkState,
+      });
+      if (track.muted) {
+        track.onunmute = () => {
+          writeDiagnostic('video track onunmute', { trackId: track.id, readyState: track.readyState });
+          markVideoReady('video track onunmute');
+        };
+      }
       try {
+        writeDiagnostic('video.play() richiesto', { readyState: video.readyState, paused: video.paused });
         await video.play();
-        markVideoReady();
+        writeDiagnostic('video.play() risolto', {
+          readyState: video.readyState,
+          paused: video.paused,
+          videoWidth: video.videoWidth,
+          videoHeight: video.videoHeight,
+        });
+        markVideoReady('video.play() completato');
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        writeDiagnostic('ERRORE video.play()', { message, readyState: video.readyState, paused: video.paused });
         console.error('Impossibile riprodurre il flusso video ricevuto', error);
       }
     };
 
+    pc.oniceconnectionstatechange = () => {
+      writeDiagnostic('iceconnectionstatechange', {
+        state: pc.iceConnectionState,
+        connectionState: pc.connectionState,
+        signalingState: pc.signalingState,
+      });
+    };
     pc.onconnectionstatechange = () => {
+      writeDiagnostic('connectionstatechange', {
+        state: pc.connectionState,
+        iceConnectionState: pc.iceConnectionState,
+        signalingState: pc.signalingState,
+      });
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
         console.error('Connessione video WebRTC non riuscita:', pc.connectionState);
         setIsBuffering(true);
       }
+    };
+    pc.onsignalingstatechange = () => {
+      writeDiagnostic('signalingstatechange', {
+        state: pc.signalingState,
+        localDescriptionType: pc.localDescription?.type ?? null,
+        remoteDescriptionType: pc.remoteDescription?.type ?? null,
+        localHasVideoMLine: /(^|\\r?\\n)m=video /m.test(pc.localDescription?.sdp ?? ''),
+        remoteHasVideoMLine: /(^|\\r?\\n)m=video /m.test(pc.remoteDescription?.sdp ?? ''),
+      });
+      setDiagnosticSdp({
+        local: pc.localDescription?.sdp ?? diagnosticSdp.local,
+        remote: pc.remoteDescription?.sdp ?? diagnosticSdp.remote,
+      });
+    };
+    pc.onicegatheringstatechange = () => {
+      writeDiagnostic('icegatheringstatechange', { state: pc.iceGatheringState });
     };
 
     pc.onicecandidate = (event) => {
@@ -148,16 +404,52 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
     signaling.onMessage(async (msg) => {
       try {
         if (msg.type === 'offer') {
+          const remoteSdp = String(msg.payload?.sdp ?? '');
+          setDiagnosticSdp((previous) => ({ ...previous, remote: remoteSdp }));
+          writeDiagnostic('SDP OFFERTA ricevuta', {
+            type: msg.payload?.type ?? null,
+            hasVideoMLine: /(^|\\r?\\n)m=video /m.test(remoteSdp),
+            hasAudioMLine: /(^|\\r?\\n)m=audio /m.test(remoteSdp),
+            sdpLength: remoteSdp.length,
+          });
           if (pc.signalingState === 'have-local-offer') {
             await pc.setLocalDescription({ type: 'rollback' });
           }
           await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+          setDiagnosticSdp((previous) => ({
+            ...previous,
+            remote: pc.remoteDescription?.sdp ?? remoteSdp,
+          }));
+          writeDiagnostic('setRemoteDescription(offer) completato', {
+            signalingState: pc.signalingState,
+            remoteHasVideoMLine: /(^|\\r?\\n)m=video /m.test(pc.remoteDescription?.sdp ?? ''),
+          });
           await flushPendingIceCandidates();
           const answer = await pc.createAnswer();
+          writeDiagnostic('createAnswer completato', {
+            type: answer.type,
+            hasVideoMLine: /(^|\\r?\\n)m=video /m.test(answer.sdp ?? ''),
+            sdpLength: answer.sdp?.length ?? 0,
+          });
           await pc.setLocalDescription(answer);
-          await signaling.sendMessage('answer', answer);
+          const localSdp = pc.localDescription?.sdp ?? answer.sdp ?? '';
+          setDiagnosticSdp((previous) => ({ ...previous, local: localSdp }));
+          writeDiagnostic('SDP RISPOSTA inviata', {
+            type: pc.localDescription?.type ?? answer.type,
+            hasVideoMLine: /(^|\\r?\\n)m=video /m.test(localSdp),
+            hasAudioMLine: /(^|\\r?\\n)m=audio /m.test(localSdp),
+            sdpLength: localSdp.length,
+          });
+          await signaling.sendMessage('answer', pc.localDescription ?? answer);
           // SDP accepted does not mean video is flowing: wait for ontrack/play.
         } else if (msg.type === 'answer') {
+          const remoteSdp = String(msg.payload?.sdp ?? '');
+          setDiagnosticSdp((previous) => ({ ...previous, remote: remoteSdp }));
+          writeDiagnostic('SDP RISPOSTA ricevuta', {
+            type: msg.payload?.type ?? null,
+            hasVideoMLine: /(^|\\r?\\n)m=video /m.test(remoteSdp),
+            sdpLength: remoteSdp.length,
+          });
           if (pc.signalingState !== 'stable') {
             await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
             await flushPendingIceCandidates();
@@ -276,6 +568,18 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
   };
 
   const handleStartIntercom = async () => {
+    const pcAtStart = peerConnectionRef.current;
+    writeDiagnostic('PARLA: pressione/inizio', {
+      connectionState: pcAtStart?.connectionState ?? 'no-pc',
+      iceConnectionState: pcAtStart?.iceConnectionState ?? 'no-pc',
+      signalingState: pcAtStart?.signalingState ?? 'no-pc',
+      transceivers: pcAtStart?.getTransceivers().map((transceiver) => ({
+        kind: transceiver.receiver.track.kind,
+        direction: transceiver.direction,
+        currentDirection: transceiver.currentDirection,
+        senderTrack: transceiver.sender.track?.kind ?? null,
+      })) ?? [],
+    });
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error('Microfono non disponibile in questa WebView.');
@@ -300,10 +604,26 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
         throw new Error('Canale audio non negoziato. Chiudi e riapri la telecamera.');
       }
       await audioTransceiver.sender.replaceTrack(audioTrack);
+      writeDiagnostic('PARLA: replaceTrack(audio) completato', {
+        senderTrackKind: audioTransceiver.sender.track?.kind ?? null,
+        connectionState: pc.connectionState,
+        iceConnectionState: pc.iceConnectionState,
+        signalingState: pc.signalingState,
+        note: 'La funzione non chiama createOffer/createAnswer e non modifica l’SDP.',
+      });
 
       await signalingRef.current?.sendMessage('command', { command: 'intercom_start' });
+      writeDiagnostic('PARLA: comando intercom_start inviato', {
+        connectionState: pc.connectionState,
+        signalingState: pc.signalingState,
+      });
       setIsIntercomActive(true);
     } catch (err) {
+      writeDiagnostic('ERRORE PARLA', {
+        message: err instanceof Error ? err.message : String(err),
+        connectionState: peerConnectionRef.current?.connectionState ?? 'no-pc',
+        signalingState: peerConnectionRef.current?.signalingState ?? 'no-pc',
+      });
       console.error('Intercom microphone error', err);
       setIsIntercomActive(false);
       if (micStreamRef.current) {
@@ -314,6 +634,12 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
   };
 
   const handleStopIntercom = () => {
+    const pc = peerConnectionRef.current;
+    writeDiagnostic('PARLA: rilascio pulsante', {
+      connectionState: pc?.connectionState ?? 'no-pc',
+      iceConnectionState: pc?.iceConnectionState ?? 'no-pc',
+      signalingState: pc?.signalingState ?? 'no-pc',
+    });
     if (micStreamRef.current) {
       micStreamRef.current.getTracks().forEach((t) => t.stop());
       micStreamRef.current = null;
@@ -331,6 +657,10 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
     if (signalingRef.current) {
       signalingRef.current.sendMessage('command', { command: 'intercom_stop' });
     }
+    writeDiagnostic('PARLA: replaceTrack(null) richiesto; nessuna nuova SDP', {
+      connectionState: pc?.connectionState ?? 'no-pc',
+      signalingState: pc?.signalingState ?? 'no-pc',
+    });
     setIsIntercomActive(false);
   };
 
@@ -463,6 +793,8 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
               autoPlay
               playsInline
               muted
+              onDoubleClick={toggleDiagnosticsWithDoubleTap}
+              onTouchEnd={toggleDiagnosticsWithDoubleTap}
             />
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-[#080E18] text-center p-6">
@@ -471,6 +803,18 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
               <p className="text-xs text-[#99B0CA] max-w-sm">Questa versione non può riprodurre direttamente RTSP. Non viene mostrata un'immagine sostitutiva come se fosse il video reale.</p>
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setDiagnosticsOpen((open) => !open);
+              writeDiagnostic('Overlay diagnostica attivato tramite pulsante DIAG');
+            }}
+            className="absolute top-3 left-3 z-30 rounded-lg border border-[#36C5FF]/60 bg-black/75 px-3 py-1.5 text-[10px] font-bold tracking-widest text-[#36C5FF] backdrop-blur"
+            title="Apri diagnostica WebRTC"
+          >
+            DIAG WEBRTC
+          </button>
 
           {/* Buffering Indicator */}
           {isBuffering && (
@@ -720,6 +1064,103 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
           </button>
         </div>
       </div>
+      {diagnosticsOpen && (
+        <div className="absolute inset-3 z-[100] flex flex-col overflow-hidden rounded-2xl border border-[#36C5FF]/70 bg-[#050B13]/[0.97] shadow-2xl backdrop-blur-xl">
+          <div className="flex items-center justify-between gap-3 border-b border-[#24364D] px-4 py-3">
+            <div className="min-w-0">
+              <div className="text-sm font-black tracking-widest text-[#36C5FF]">DIAGNOSTICA WEBRTC</div>
+              <div className="mt-1 text-[10px] text-[#99B0CA]">Doppio tap sul video per aprire/chiudere • aggiornamento statistiche ogni 2 s</div>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button type="button" onClick={() => void collectWebRtcStats()} className="rounded-lg border border-[#24364D] bg-[#101C2B] px-3 py-2 text-[11px] font-bold text-white">Aggiorna</button>
+              <button type="button" onClick={exportWebRtcDiagnostics} className="rounded-lg border border-[#36C5FF]/50 bg-[#10263A] px-3 py-2 text-[11px] font-bold text-[#36C5FF]">Esporta JSON</button>
+              <button type="button" onClick={() => setDiagnosticsOpen(false)} className="rounded-lg border border-[#24364D] bg-[#101C2B] px-3 py-2 text-[11px] font-bold text-white">Chiudi</button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 overflow-y-auto p-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-[#24364D] bg-[#101C2B] p-3">
+              <div className="text-[10px] uppercase tracking-wide text-[#99B0CA]">Connection</div>
+              <div className="mt-1 break-words text-sm font-bold text-white">{peerConnectionRef.current?.connectionState ?? 'assente'}</div>
+            </div>
+            <div className="rounded-lg border border-[#24364D] bg-[#101C2B] p-3">
+              <div className="text-[10px] uppercase tracking-wide text-[#99B0CA]">ICE connection</div>
+              <div className="mt-1 break-words text-sm font-bold text-white">{peerConnectionRef.current?.iceConnectionState ?? 'assente'}</div>
+            </div>
+            <div className="rounded-lg border border-[#24364D] bg-[#101C2B] p-3">
+              <div className="text-[10px] uppercase tracking-wide text-[#99B0CA]">Signaling</div>
+              <div className="mt-1 break-words text-sm font-bold text-white">{peerConnectionRef.current?.signalingState ?? 'assente'}</div>
+            </div>
+            <div className="rounded-lg border border-[#24364D] bg-[#101C2B] p-3">
+              <div className="text-[10px] uppercase tracking-wide text-[#99B0CA]">Pacchetti video ricevuti</div>
+              <div className="mt-1 text-xl font-black text-[#45D7B0]">{videoStats.packetsReceived ?? '—'}</div>
+            </div>
+            <div className="rounded-lg border border-[#24364D] bg-[#101C2B] p-3">
+              <div className="text-[10px] uppercase tracking-wide text-[#99B0CA]">Pacchetti persi</div>
+              <div className="mt-1 text-xl font-black text-[#FFC56E]">{videoStats.packetsLost ?? '—'}</div>
+            </div>
+            <div className="rounded-lg border border-[#24364D] bg-[#101C2B] p-3">
+              <div className="text-[10px] uppercase tracking-wide text-[#99B0CA]">Bitrate video in ingresso</div>
+              <div className="mt-1 text-xl font-black text-[#36C5FF]">
+                {videoStats.bitrateBps === null ? 'calcolo…' : `${Math.round(videoStats.bitrateBps / 1000)} kbps`}
+              </div>
+            </div>
+            <div className="rounded-lg border border-[#24364D] bg-[#101C2B] p-3">
+              <div className="text-[10px] uppercase tracking-wide text-[#99B0CA]">Frame ricevuti / decodificati</div>
+              <div className="mt-1 text-sm font-bold text-white">{videoStats.framesReceived ?? '—'} / {videoStats.framesDecoded ?? '—'}</div>
+            </div>
+            <div className="rounded-lg border border-[#24364D] bg-[#101C2B] p-3">
+              <div className="text-[10px] uppercase tracking-wide text-[#99B0CA]">Risoluzione / codec</div>
+              <div className="mt-1 break-words text-sm font-bold text-white">
+                {videoStats.frameWidth && videoStats.frameHeight ? `${videoStats.frameWidth}×${videoStats.frameHeight}` : '—'}
+                {videoStats.codec ? ` / ${videoStats.codec}` : ''}
+              </div>
+            </div>
+            <div className="rounded-lg border border-[#24364D] bg-[#101C2B] p-3">
+              <div className="text-[10px] uppercase tracking-wide text-[#99B0CA]">Byte video ricevuti</div>
+              <div className="mt-1 break-words text-sm font-bold text-white">{videoStats.bytesReceived ?? '—'}</div>
+            </div>
+            {videoStats.error && (
+              <div className="col-span-2 rounded-lg border border-[#FF6577]/60 bg-[#36131B] p-3 text-xs text-[#FF9BA7] sm:col-span-3">
+                Errore statistiche: {videoStats.error}
+              </div>
+            )}
+            <div className="col-span-2 rounded-lg border border-[#24364D] bg-[#101C2B] p-3 sm:col-span-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="text-xs font-bold uppercase tracking-wide text-[#36C5FF]">SDP esatto scambiato</div>
+                <div className="text-[10px] text-[#99B0CA]">
+                  remoto m=video: {/(^|\r?\n)m=video /m.test(diagnosticSdp.remote) ? 'SÌ' : 'NO'}
+                  {' • '}
+                  locale m=video: {/(^|\r?\n)m=video /m.test(diagnosticSdp.local) ? 'SÌ' : 'NO'}
+                </div>
+              </div>
+              <details className="mb-2 rounded-md border border-[#24364D] p-2">
+                <summary className="cursor-pointer text-xs font-bold text-white">SDP remoto (offerta normalmente inviata dal telefono)</summary>
+                <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all text-[9px] leading-4 text-[#B5C8DD]">{diagnosticSdp.remote || 'In attesa di SDP remoto…'}</pre>
+              </details>
+              <details className="rounded-md border border-[#24364D] p-2">
+                <summary className="cursor-pointer text-xs font-bold text-white">SDP locale (risposta del centro di controllo)</summary>
+                <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all text-[9px] leading-4 text-[#B5C8DD]">{diagnosticSdp.local || 'In attesa di SDP locale…'}</pre>
+              </details>
+            </div>
+            <div className="col-span-2 rounded-lg border border-[#24364D] bg-[#101C2B] p-3 sm:col-span-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-xs font-bold uppercase tracking-wide text-[#36C5FF]">Eventi in ordine temporale</div>
+                <div className="text-[10px] text-[#99B0CA]">{diagnosticEntries.length} eventi (max 300)</div>
+              </div>
+              <div className="max-h-56 overflow-auto rounded-md bg-black/40 p-2 font-mono text-[9px] leading-4 text-[#B5C8DD]">
+                {diagnosticEntries.length === 0 ? (
+                  <div>Nessun evento registrato finora.</div>
+                ) : (
+                  diagnosticEntries.map((entry, index) => <div key={index} className="break-all border-b border-white/5 py-1">{entry}</div>)
+                )}
+              </div>
+            </div>
+            <div className="col-span-2 pb-2 text-[10px] text-[#99B0CA] sm:col-span-3">
+              Il bitrate richiede almeno due campioni. “Pacchetti persi” e contatori provengono da getStats(); gli errori di negoziazione/playback compaiono nel registro.
+            </div>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 };
