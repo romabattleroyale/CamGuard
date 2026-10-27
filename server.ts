@@ -34,6 +34,45 @@ interface Session {
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
+// Render terminates HTTPS before forwarding requests to the Node process.
+app.set('trust proxy', 1);
+
+// Allow the hosted web app plus the known Capacitor WebView origins.
+// Keep this scoped rather than enabling CORS for every arbitrary website.
+const allowedCorsOrigins = new Set([
+  'https://camguard-signaling.onrender.com',
+  'https://localhost',
+  'capacitor://localhost',
+  'http://localhost',
+]);
+app.use((req: Request, res: Response, next) => {
+  const origin = req.get('origin');
+  let isAllowedOrigin = !origin || allowedCorsOrigins.has(origin);
+  if (origin && !isAllowedOrigin) {
+    try {
+      const parsedOrigin = new URL(origin);
+      isAllowedOrigin =
+        parsedOrigin.hostname === 'localhost' &&
+        ['http:', 'https:', 'capacitor:'].includes(parsedOrigin.protocol);
+    } catch {
+      isAllowedOrigin = false;
+    }
+  }
+
+  if (origin && isAllowedOrigin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Max-Age', '600');
+  }
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(isAllowedOrigin ? 204 : 403);
+  }
+  next();
+});
+
 // Bound JSON payload size so signaling endpoints cannot accept arbitrary large bodies.
 app.use(express.json({ limit: '256kb' }));
 
