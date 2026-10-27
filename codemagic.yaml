@@ -13,6 +13,7 @@ workflows:
       - name: Install dependencies
         script: |
           npm install --no-audit --no-fund --legacy-peer-deps
+          npm run lint
       - name: Install Capacitor 8
         script: |
           npm install --no-save --legacy-peer-deps --no-audit --no-fund @capacitor/core@^8 @capacitor/cli@^8 @capacitor/android@^8
@@ -51,6 +52,16 @@ workflows:
       - name: Sync web app to Android
         script: |
           npx cap sync android
+          python3 - <<'PY'
+          from pathlib import Path
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          xml = manifest.read_text()
+          required = ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"]
+          missing = [permission for permission in required if permission not in xml]
+          if missing:
+              raise SystemExit("Capacitor sync removed required permissions: " + ", ".join(missing))
+          print("Camera/microphone permissions verified after Capacitor sync.")
+          PY
       - name: Configure Android SDK path
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
