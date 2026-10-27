@@ -202,20 +202,7 @@ export default function App() {
   };
 
   const handleSimulateNewEvent = () => {
-    const newEvt: SecurityEvent = {
-      id: `evt_${Date.now()}`,
-      cameraId: 'ip_tapo_c200',
-      cameraName: 'Salotto - Tapo C200',
-      type: 'motion',
-      severity: 'info',
-      description: 'Nuovo movimento rilevato adesso',
-      timeAgo: new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
-      timestamp: Date.now(),
-      roomImage: ASSETS.roomLivingRoom,
-    };
-    setEventsList((prev) => [newEvt, ...prev]);
-    playChimeSound();
-    showToast('Nuovo evento rilevato in Salotto');
+    showToast('Gli eventi vengono creati solo quando arriva una rilevazione reale.');
   };
 
   const onlineCount = useMemo(() => cameras.filter((c) => c.status === 'online').length, [cameras]);
@@ -283,15 +270,19 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  const handlePullRefresh = () => {
+  const handlePullRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setCameras((prev) =>
-        prev.map((cam) => ({ ...cam, status: 'online' }))
-      );
+    try {
+      const response = await apiFetch('/api/lan-info');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      await response.json();
+      setLanInfo((prev) => prev);
+      showToast('Server raggiungibile. Lo stato delle telecamere non è stato alterato.');
+    } catch {
+      showToast('Server non raggiungibile: controlla la connessione.');
+    } finally {
       setIsRefreshing(false);
-      showToast('Stato sincronizzato con la rete locale');
-    }, 600);
+    }
   };
 
   const handleAddCamera = (newCam: CameraDevice) => {
@@ -319,11 +310,16 @@ export default function App() {
   };
 
   const handleReconnectCamera = (targetCam: CameraDevice) => {
-    const updated = cameras.map((c) =>
-      c.id === targetCam.id ? { ...c, status: 'online' as const } : c
-    );
-    saveCameras(updated);
-    showToast(`"${targetCam.name}" ora online`);
+    // The card performs a real signaling reachability check for phone nodes.
+    // IP camera RTSP reachability is not implemented yet; never mark it online optimistically.
+    if (targetCam.type === 'ip') {
+      saveCameras(cameras.map((camera) =>
+        camera.id === targetCam.id ? { ...camera, status: 'offline' as const } : camera
+      ));
+      showToast('Verifica RTSP/ONVIF non disponibile: telecamera non dichiarata online.');
+      return;
+    }
+    showToast('La riconnessione viene verificata tramite la sessione del telefono.');
   };
 
   const togglePrivacyMode = () => {
