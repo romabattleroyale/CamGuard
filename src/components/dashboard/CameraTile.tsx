@@ -76,12 +76,13 @@ export const CameraTile: React.FC<CameraTileProps> = ({
   const signalingRef = useRef<SignalingClient | null>(null);
   const localMicStreamRef = useRef<MediaStream | null>(null);
 
-  // Sync state with camera.status prop
+  // Saved status is historical only; live state requires media tracks.
   useEffect(() => {
-    // Persisted status is not proof that a stream is currently live.
-    setIsLive(false);
-    setLastActivity('Verifica connessione in corso');
-  }, [camera.status]);
+    if (camera.type !== 'phone') {
+      setIsLive(false);
+      setLastActivity('Flusso IP non disponibile');
+    }
+  }, [camera.status, camera.type]);
 
   // WebRTC Setup for Phone Camera
   useEffect(() => {
@@ -117,9 +118,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') {
-        setIsLive(true);
-        setLastActivity('Flusso WebRTC collegato');
-        onUpdate({ ...camera, status: 'online', lastSeen: Date.now() });
+        setLastActivity('Connessione WebRTC stabilita; attendo fotogrammi');
       } else if (
         pc.connectionState === 'disconnected' ||
         pc.connectionState === 'failed' ||
