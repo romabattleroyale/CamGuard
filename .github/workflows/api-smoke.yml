@@ -1,0 +1,103 @@
+name: CamGuard Signaling API Smoke Test
+
+on:
+  push:
+    branches:
+      - codemagic/android-apk
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signaling-smoke:
+    name: Verify hosted signaling and WebView CORS
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Probe API and Capacitor CORS
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="https://camguard-signaling.onrender.com"
+
+          # Retry briefly to tolerate a free-tier cold start.
+          curl --retry 8 --retry-delay 8 --retry-all-errors --connect-timeout 15 --max-time 45 \
+            -sS -D /tmp/lan-headers -o /tmp/lan-info.json \
+            "$BASE_URL/api/lan-info"
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          headers = Path("/tmp/lan-headers").read_text().lower()
+          data = json.loads(Path("/tmp/lan-info.json").read_text())
+          assert isinstance(data, dict), "lan-info must return a JSON object"
+          assert "port" in data and "lanUrl" in data, "lan-info response is missing expected fields"
+          assert "access-control-allow-origin: https://localhost" in headers, "CORS header for Android Capacitor origin is missing"
+          print("API health and Android CORS: OK")
+          PY
+
+          # OPTIONS preflight is required for JSON POST requests from Capacitor.
+          curl --retry 4 --retry-delay 3 --retry-all-errors --connect-timeout 15 --max-time 30 \
+            -sS -o /dev/null -D /tmp/preflight-headers -X OPTIONS \
+            -H "Origin: https://localhost" \
+            -H "Access-Control-Request-Method: POST" \
+            -H "Access-Control-Request-Headers: content-type" \
+            "$BASE_URL/api/signaling/create"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          headers = Path("/tmp/preflight-headers").read_text().lower()
+          assert "204" in headers.splitlines()[0], "CORS preflight must return HTTP 204"
+          assert "access-control-allow-origin: https://localhost" in headers, "Preflight did not authorize Android Capacitor"
+          assert "access-control-allow-methods:" in headers and "post" in headers, "POST is not allowed by preflight"
+          print("CORS preflight: OK")
+          PY
+
+      - name: Create session and verify signaling round-trip
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_URL="https://camguard-signaling.onrender.com"
+
+          curl --retry 8 --retry-delay 8 --retry-all-errors --connect-timeout 15 --max-time 45 \
+            -sS -D /tmp/create-headers -H "Origin: https://localhost" \
+            -H "Content-Type: application/json" \
+            -X POST -d '{"name":"CamGuard CI smoke test"}' \
+            "$BASE_URL/api/signaling/create" -o /tmp/create.json
+
+          read -r SESSION_ID PIN < <(python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+          data = json.loads(Path("/tmp/create.json").read_text())
+          assert data.get("success") is True, "Session creation did not succeed"
+          sid, pin = data.get("sessionId"), data.get("pin")
+          assert isinstance(sid, str) and sid, "Session ID is missing"
+          assert isinstance(pin, str) and re.fullmatch(r"[0-9]{6}", pin), "PIN must be six digits"
+          print(sid, pin)
+          PY
+          )
+
+          curl --retry 4 --retry-delay 3 --retry-all-errors --connect-timeout 15 --max-time 30 \
+            -sS -H "Origin: https://localhost" -H "Content-Type: application/json" \
+            -X POST -d "{\"id\":\"msg_smoke_roundtrip\",\"pin\":\"$PIN\",\"sender\":\"camera\",\"type\":\"status\",\"payload\":{\"cameraInfo\":{\"batteryLevel\":88}}}" \
+            "$BASE_URL/api/signaling/$SESSION_ID/message" -o /tmp/message.json
+
+          curl --retry 4 --retry-delay 3 --retry-all-errors --connect-timeout 15 --max-time 30 \
+            -sS -H "Origin: https://localhost" \
+            "$BASE_URL/api/signaling/$SESSION_ID/messages?role=viewer&pin=$PIN&since=0" \
+            -o /tmp/messages.json
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          created = json.loads(Path("/tmp/create.json").read_text())
+          posted = json.loads(Path("/tmp/message.json").read_text())
+          polled = json.loads(Path("/tmp/messages.json").read_text())
+          assert created.get("sessionId"), "Session was not created"
+          assert posted.get("success") is True, "Signaling message was rejected"
+          msgs = polled.get("messages")
+          assert isinstance(msgs, list), "Polling did not return a messages list"
+          assert any(m.get("id") == "msg_smoke_roundtrip" and m.get("type") == "status" for m in msgs), "Round-trip signaling message was not received"
+          print("Create PIN/session and signaling round-trip: OK")
+          PY
