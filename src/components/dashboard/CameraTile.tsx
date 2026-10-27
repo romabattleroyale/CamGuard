@@ -174,17 +174,38 @@ export const CameraTile: React.FC<CameraTileProps> = ({
     };
   }, [camera.sessionId, camera.type, isOnline]);
 
-  const handleManualReconnect = (e: React.MouseEvent) => {
+  const handleManualReconnect = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsReconnecting(true);
-    setTimeout(() => {
-      setIsReconnecting(false);
-      if (onReconnect) {
-        onReconnect(camera);
+
+    try {
+      if (camera.type === 'phone' && camera.sessionId) {
+        const response = await fetch(
+          `/api/signaling/${encodeURIComponent(camera.sessionId)}/messages?role=viewer&since=${Date.now() - 15000}`
+        );
+        if (!response.ok) {
+          throw new Error('La sessione della telecamera non è raggiungibile.');
+        }
+        const data = await response.json();
+        if (!Array.isArray(data.messages)) {
+          throw new Error('Risposta del server non valida.');
+        }
+        const isRecentlyActive = data.messages.length > 0 || data.cameraInfo != null;
+        if (!isRecentlyActive) {
+          throw new Error('Nessuna attività recente dalla telecamera. Verifica che il telefono trasmettitore sia aperto e collegato.');
+        }
+        onUpdate({ ...camera, status: 'online', lastSeen: Date.now() });
       } else {
-        onUpdate({ ...camera, status: 'online' });
+        // IP camera reachability requires a real RTSP/ONVIF probe service.
+        // Do not falsely mark an untested device as online.
+        throw new Error('La verifica reale RTSP/ONVIF non è ancora configurata per questa telecamera IP.');
       }
-    }, 1200);
+    } catch (error) {
+      console.warn('Camera reconnect check failed', error);
+      onUpdate({ ...camera, status: 'offline', lastSeen: Date.now() });
+    } finally {
+      setIsReconnecting(false);
+    }
   };
 
   const toggleRemoteTorch = (e: React.MouseEvent) => {
