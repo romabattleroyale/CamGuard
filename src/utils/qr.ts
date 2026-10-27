@@ -1,18 +1,20 @@
 import QRCode from 'qrcode';
 
 /**
- * Generates a Data URL for a given text as a high quality QR code
+ * Generates a standards-compatible QR code for pairing links.
+ * Keep dark modules on a white background: many Android camera scanners
+ * struggle with inverted (white-on-dark) QR codes, especially on dim screens.
  */
 export async function generateQrDataUrl(text: string): Promise<string> {
   try {
     return await QRCode.toDataURL(text, {
-      width: 320,
-      margin: 2,
+      width: 420,
+      margin: 4,
       color: {
-        dark: '#ffffff',
-        light: '#0a0f1d',
+        dark: '#07111f',
+        light: '#ffffff',
       },
-      errorCorrectionLevel: 'M',
+      errorCorrectionLevel: 'Q',
     });
   } catch (err) {
     console.error('Failed to generate QR code', err);
