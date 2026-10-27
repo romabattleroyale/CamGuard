@@ -479,7 +479,17 @@ export const CameraTile: React.FC<CameraTileProps> = ({
               {camera.name}
             </h3>
             <p className="text-[11px] text-[#99B0CA] truncate">
-              {brandDisplay()}
+              {camera.type === 'phone'
+                ? 'Telefono collegato'
+                : camera.brand === 'tapo'
+                  ? 'TP-Link Tapo'
+                  : camera.brand === 'ezviz'
+                    ? 'EZVIZ'
+                    : camera.brand === 'reolink'
+                      ? 'Reolink'
+                      : camera.brand === 'generic'
+                        ? 'Telecamera IP'
+                        : 'Telecamera IP'}
             </p>
           </div>
 
