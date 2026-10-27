@@ -30,23 +30,22 @@ workflows:
           MANIFEST="$CM_BUILD_DIR/android/app/src/main/AndroidManifest.xml"
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p = Path("android/app/src/main/AndroidManifest.xml")
           s = p.read_text()
           permissions = [
-              '<uses-permission android:name="android.permission.CAMERA" />',
-              '<uses-permission android:name="android.permission.RECORD_AUDIO" />',
-              '<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />'
+              "android.permission.CAMERA",
+              "android.permission.RECORD_AUDIO",
+              "android.permission.MODIFY_AUDIO_SETTINGS",
           ]
-          anchor = "<application"
-          missing = [x for x in permissions if x not in s]
+          for permission in permissions:
+              if not re.search(r'<uses-permission\\s+android:name="' + re.escape(permission) + r'"', s):
+                  s = re.sub(r'<application\\b', '<uses-permission android:name="' + permission + '" />\\n    <application', s, count=1)
+          required = permissions[:2]
+          missing = [permission for permission in required if not re.search(r'<uses-permission\\s+android:name="' + re.escape(permission) + r'"', s)]
           if missing:
-              s = s.replace(anchor, "\n    " + "\n    ".join(missing) + "\n\n    " + anchor, 1)
-              p.write_text(s)
-          final_xml = p.read_text()
-          required = ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"]
-          missing_after = [permission for permission in required if permission not in final_xml]
-          if missing_after:
-              raise SystemExit("Missing Android permissions: " + ", ".join(missing_after))
+              raise SystemExit("Missing Android permissions: " + ", ".join(missing))
+          p.write_text(s)
           print("Verified camera and microphone permissions in AndroidManifest.xml")
           PY
       - name: Sync web app to Android
