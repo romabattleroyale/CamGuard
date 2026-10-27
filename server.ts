@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import os from 'os';
 import path from 'path';
-import crypto from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 
 interface SignalingMessage {
   id: string;
@@ -95,11 +95,11 @@ app.get('/api/lan-info', (req: Request, res: Response) => {
 
 // Create new camera session (initiated by Viewer)
 app.post('/api/signaling/create', (req: Request, res: Response) => {
-  const id = `cam_${crypto.randomUUID()}`;
+  const id = `cam_${randomUUID()}`;
   // Use a cryptographically secure 6-digit PIN and avoid collisions.
   let pin = '';
   do {
-    pin = String(crypto.randomInt(100000, 1000000));
+    pin = String(randomInt(100000, 1000000));
   } while (pinIndex.has(pin));
 
   const requestedName = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
@@ -185,7 +185,7 @@ app.post('/api/signaling/:sessionId/message', (req: Request, res: Response) => {
   const requestedId = typeof req.body?.id === 'string' ? req.body.id : '';
   const safeId = /^msg_[a-zA-Z0-9_-]{1,100}$/.test(requestedId)
     ? requestedId
-    : `msg_${crypto.randomUUID()}`;
+    : `msg_${randomUUID()}`;
   const message: SignalingMessage = {
     id: safeId,
     sender,
