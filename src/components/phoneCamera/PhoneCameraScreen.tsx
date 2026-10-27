@@ -94,19 +94,41 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         localStreamRef.current.getTracks().forEach((t) => t.stop());
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: facing },
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 },
-          frameRate: { ideal: 30, max: 30 },
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('MEDIA_UNAVAILABLE');
+      }
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facing },
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            frameRate: { ideal: 30, max: 30 },
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch (firstError: any) {
+        // Some devices cannot provide camera and microphone simultaneously.
+        // Try video-only so a camera stream can still start, and report audio separately.
+        if (firstError?.name === 'NotAllowedError' || firstError?.name === 'SecurityError') {
+          throw firstError;
+        }
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facing },
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+          },
+          audio: false,
+        });
+        setPermissionError('Fotocamera attiva, ma il microfono non è disponibile. Verifica il permesso microfono per abilitare l’audio.');
+      }
 
       localStreamRef.current = stream;
 
@@ -132,9 +154,20 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
       return stream;
     } catch (err: any) {
       console.error('Camera initialization error', err);
-      setPermissionError(
-        'Permessi fotocamera e microfono necessari. Consenti l’accesso per avviare la videosorveglianza.'
-      );
+      const errorName = err?.name || '';
+      const message =
+        errorName === 'NotAllowedError' || errorName === 'SecurityError'
+          ? 'Accesso negato. Consenti Fotocamera e Microfono nelle autorizzazioni di Android, poi tocca Riprova.'
+          : errorName === 'NotFoundError'
+          ? 'Non è stata trovata una fotocamera o un microfono compatibile.'
+          : errorName === 'NotReadableError' || errorName === 'TrackStartError'
+          ? 'La fotocamera è occupata da un’altra app. Chiudi le altre app che la stanno usando e riprova.'
+          : errorName === 'OverconstrainedError'
+          ? 'La fotocamera non supporta le impostazioni richieste. Riprova con le impostazioni predefinite.'
+          : errorName === 'MEDIA_UNAVAILABLE'
+          ? 'Questo WebView non espone l’API fotocamera. Verifica che l’APK sia aggiornato e che i permessi Android siano configurati.'
+          : 'Impossibile avviare fotocamera e microfono. Verifica i permessi Android e riprova.';
+      setPermissionError(message);
       return null;
     }
   }, []);
