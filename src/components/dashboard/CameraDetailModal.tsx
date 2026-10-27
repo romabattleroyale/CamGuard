@@ -463,6 +463,13 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
         } else if (msg.type === 'status') {
           const info = msg.payload?.cameraInfo;
           if (info) {
+            if (info.webrtcDiagnostic) {
+              const remoteDiagnostic = info.webrtcDiagnostic;
+              writeDiagnostic(`TELEFONO • ${String(remoteDiagnostic.event ?? 'evento WebRTC')}`, {
+                sourceAt: remoteDiagnostic.sourceAt ?? null,
+                details: remoteDiagnostic.details ?? null,
+              });
+            }
             if (info.batteryLevel !== undefined) setBatteryLevel(info.batteryLevel);
             if (info.isCharging !== undefined) setIsCharging(info.isCharging);
           }
