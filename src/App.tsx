@@ -71,153 +71,6 @@ export interface SecurityEvent {
   roomImage: string;
 }
 
-const SAMPLE_EVENTS: SecurityEvent[] = [
-  {
-    id: 'evt_1',
-    cameraId: 'ip_tapo_c200',
-    cameraName: 'Salotto - Tapo C200',
-    type: 'motion',
-    severity: 'info',
-    description: 'Movimento rilevato',
-    timeAgo: '10:32',
-    timestamp: Date.now() - 240000,
-    roomImage: ASSETS.roomLivingRoom,
-  },
-  {
-    id: 'evt_2',
-    cameraId: 'ip_giardino_c310',
-    cameraName: 'Giardino - Tapo C310',
-    type: 'person',
-    severity: 'info',
-    description: 'Persona rilevata',
-    timeAgo: '10:12',
-    timestamp: Date.now() - 720000,
-    roomImage: ASSETS.roomGardenPatio,
-  },
-  {
-    id: 'evt_3',
-    cameraId: 'ip_retro_garage',
-    cameraName: 'Garage - Reolink E1',
-    type: 'motion',
-    severity: 'info',
-    description: 'Movimento rilevato',
-    timeAgo: '09:48',
-    timestamp: Date.now() - 1440000,
-    roomImage: ASSETS.roomModernGarage,
-  },
-  {
-    id: 'evt_4',
-    cameraId: 'ip_ezviz_c6n',
-    cameraName: 'Ingresso - EZVIZ C6N',
-    type: 'reconnection',
-    severity: 'info',
-    description: 'Connessione ristabilita',
-    timeAgo: '08:21',
-    timestamp: Date.now() - 3600000 * 2,
-    roomImage: ASSETS.roomHallwayEntrance,
-  },
-  {
-    id: 'evt_5',
-    cameraId: 'ip_giardino_c310',
-    cameraName: 'Giardino - Tapo C310',
-    type: 'alarm',
-    severity: 'alert',
-    description: 'Allarme perimetro',
-    timeAgo: '07:55',
-    timestamp: Date.now() - 3600000 * 3,
-    roomImage: ASSETS.roomGardenPatio,
-  },
-  {
-    id: 'evt_6',
-    cameraId: 'ip_tapo_c200',
-    cameraName: 'Salotto - Tapo C200',
-    type: 'motion',
-    severity: 'info',
-    description: 'Movimento rilevato',
-    timeAgo: '06:30',
-    timestamp: Date.now() - 3600000 * 4,
-    roomImage: ASSETS.roomLivingRoom,
-  },
-  {
-    id: 'evt_7',
-    cameraId: 'ip_retro_garage',
-    cameraName: 'Garage - Reolink E1',
-    type: 'disconnection',
-    severity: 'warning',
-    description: 'Nessun segnale RTSP',
-    timeAgo: '08:14',
-    timestamp: Date.now() - 3600000 * 8,
-    roomImage: ASSETS.roomModernGarage,
-  },
-  {
-    id: 'evt_8',
-    cameraId: 'ip_giardino_c310',
-    cameraName: 'Giardino - Tapo C310',
-    type: 'motion',
-    severity: 'info',
-    description: 'Movimento rilevato',
-    timeAgo: '01:02',
-    timestamp: Date.now() - 3600000 * 12,
-    roomImage: ASSETS.roomGardenPatio,
-  },
-];
-
-const DEFAULT_CAMERAS: CameraDevice[] = [
-  {
-    id: 'ip_tapo_c200',
-    name: 'Salotto - Tapo C200',
-    type: 'ip',
-    brand: 'tapo',
-    status: 'online',
-    isIndoor: true,
-    ip: '192.168.1.120',
-    port: 554,
-    username: 'admin',
-    streamPath: '/stream1',
-    isSimulated: true,
-    coverImage: ASSETS.roomLivingRoom,
-    ptzSupport: true,
-    currentPan: 0,
-    currentTilt: 0,
-    createdAt: Date.now() - 3600000 * 24,
-  },
-  {
-    id: 'ip_giardino_c310',
-    name: 'Giardino - Tapo C310',
-    type: 'ip',
-    brand: 'tapo',
-    status: 'online',
-    isIndoor: false,
-    ip: '192.168.1.188',
-    port: 554,
-    username: 'admin',
-    streamPath: '/stream1',
-    isSimulated: true,
-    coverImage: ASSETS.roomGardenPatio,
-    ptzSupport: false,
-    currentPan: 0,
-    currentTilt: 0,
-    createdAt: Date.now() - 3600000 * 6,
-  },
-  {
-    id: 'ip_retro_garage',
-    name: 'Garage - Reolink E1',
-    type: 'ip',
-    brand: 'reolink',
-    status: 'online',
-    isIndoor: true,
-    ip: '192.168.1.199',
-    port: 554,
-    username: 'admin',
-    streamPath: '/h264Preview_01_main',
-    isSimulated: true,
-    coverImage: ASSETS.roomModernGarage,
-    ptzSupport: false,
-    createdAt: Date.now() - 3600000 * 48,
-    lastSeen: Date.now() - 3600000 * 2,
-  },
-];
-
 export type NavDestination = 'welcome' | 'camera_mode' | 'control_center';
 
 export default function App() {
@@ -232,21 +85,21 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch {
-      // Fallback
+      // Ignore corrupted saved data and start with an empty camera list.
     }
-    return DEFAULT_CAMERAS;
+    return [];
   });
 
   // Favorite Camera IDs
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem(FAVORITES_KEY);
-      return saved ? JSON.parse(saved) : ['ip_tapo_c200', 'ip_giardino_c310'];
+      return saved ? JSON.parse(saved) : [];
     } catch {
-      return ['ip_tapo_c200', 'ip_giardino_c310'];
+      return [];
     }
   });
 
@@ -271,7 +124,7 @@ export default function App() {
   const [actionFeedbackToast, setActionFeedbackToast] = useState<string | null>(null);
 
   // Search & Filtering
-  const [eventsList, setEventsList] = useState<SecurityEvent[]>(SAMPLE_EVENTS);
+  const [eventsList, setEventsList] = useState<SecurityEvent[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
   const [eventsFilter, setEventsFilter] = useState<'all' | 'motion' | 'person'>('all');
