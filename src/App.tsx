@@ -85,7 +85,20 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          // Remove old seeded sample devices and any camera explicitly marked simulated.
+          const demoIds = new Set(['ip_tapo_c200', 'ip_giardino_c310', 'ip_retro_garage', 'ip_ezviz_c6n']);
+          const realCameras = parsed.filter((camera: CameraDevice) =>
+            camera &&
+            typeof camera.id === 'string' &&
+            !demoIds.has(camera.id) &&
+            camera.isSimulated !== true
+          );
+          if (realCameras.length !== parsed.length) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(realCameras));
+          }
+          return realCameras;
+        }
       }
     } catch {
       // Ignore corrupted saved data and start with an empty camera list.
@@ -114,9 +127,9 @@ export default function App() {
   const [recordingsCount, setRecordingsCount] = useState<number>(() => {
     try {
       const saved = localStorage.getItem(RECORDINGS_KEY);
-      return saved ? parseInt(saved, 10) : 3;
+      return saved ? Math.max(0, parseInt(saved, 10) || 0) : 0;
     } catch {
-      return 3;
+      return 0;
     }
   });
   const [isAlarmArmed, setIsAlarmArmed] = useState<boolean>(false);
@@ -199,10 +212,6 @@ export default function App() {
       } catch {}
       return next;
     });
-  };
-
-  const handleSimulateNewEvent = () => {
-    showToast('Gli eventi vengono creati solo quando arriva una rilevazione reale.');
   };
 
   const onlineCount = useMemo(() => cameras.filter((c) => c.status === 'online').length, [cameras]);
