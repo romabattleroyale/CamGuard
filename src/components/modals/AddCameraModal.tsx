@@ -51,6 +51,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
   const [sessionId, setSessionId] = useState<string>('');
   const [pin, setPin] = useState<string>('');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [pairingError, setPairingError] = useState<string>('');
   const [pairingUrl, setPairingUrl] = useState<string>('');
   const [phoneCamName, setPhoneCamName] = useState('Vecchio Telefono (Camera)');
   const [isPhoneConnected, setIsPhoneConnected] = useState(false);
@@ -83,6 +84,15 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
 
     async function initPhoneSession() {
       try {
+        setPairingError('');
+        setQrDataUrl('');
+        setSessionId('');
+        setPin('');
+        setPairingUrl('');
+        if (window.location.protocol === 'capacitor:' || window.location.hostname === 'localhost') {
+          setPairingError('Il server di collegamento non è configurato per questa app. Imposta un URL HTTPS pubblico del server CamGuard nelle Impostazioni; inoltre il vecchio telefono deve poter aprire la versione web di CamGuard.');
+          return;
+        }
         const lanRes = await apiFetch('/api/lan-info');
         let hostUrl = window.location.origin;
         if (lanRes.ok) {
@@ -99,8 +109,14 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
           body: JSON.stringify({ name: phoneCamName }),
         });
 
-        if (!createRes.ok || !isMounted) return;
+        if (!createRes.ok) {
+          throw new Error(`Il server di collegamento ha risposto con errore HTTP ${createRes.status}. Verifica che il backend CamGuard sia online e che l'URL del server sia corretto.`);
+        }
+        if (!isMounted) return;
         const data = await createRes.json();
+        if (!data.sessionId || !data.pin) {
+          throw new Error('Il server non ha restituito il codice PIN e la sessione. Controlla la configurazione del backend.');
+        }
         const sId = data.sessionId;
         const sPin = data.pin;
 
@@ -125,6 +141,9 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
         });
       } catch (err) {
         console.error('Failed to init phone pairing session', err);
+        if (isMounted) {
+          setPairingError(err instanceof Error ? err.message : 'Impossibile contattare il server di collegamento. Controlla la connessione e l’URL del server CamGuard.');
+        }
       }
     }
 
@@ -555,6 +574,13 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                 variants={itemVariants}
                 className="p-5 bg-[#0B0F14] rounded-[24px] border border-[#1F2933] flex flex-col sm:flex-row items-center gap-6 justify-center"
               >
+                {pairingError && (
+                  <div role="alert" className="w-full rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">
+                    <strong className="block mb-1">Collegamento non disponibile</strong>
+                    {pairingError}
+                  </div>
+                )}
+
                 {/* QR Code */}
                 <div className="shrink-0 flex flex-col items-center">
                   <div className="relative p-2.5 bg-[#141A21] border-2 border-[#4FC3F7]/40 rounded-2xl shadow-xl">
