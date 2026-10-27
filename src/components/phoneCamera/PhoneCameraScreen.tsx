@@ -550,14 +550,6 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
               </div>
             )}
 
-            {/* QR Pairing Modal Trigger */}
-            <button
-              onClick={() => setQrModalOpen(true)}
-              className="p-2 rounded-full bg-black/60 hover:bg-black/80 text-[#4FC3F7] backdrop-blur-md border border-white/15 transition-all shadow-md active:scale-90"
-              title="Mostra codice QR per Viewer"
-            >
-              <QrCode className="w-4 h-4" />
-            </button>
           </div>
         </header>
 
