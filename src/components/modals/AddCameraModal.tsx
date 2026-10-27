@@ -89,10 +89,6 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
         setSessionId('');
         setPin('');
         setPairingUrl('');
-        if (window.location.protocol === 'capacitor:' || window.location.hostname === 'localhost') {
-          setPairingError('Il server di collegamento non è configurato per questa app. Imposta un URL HTTPS pubblico del server CamGuard nelle Impostazioni; inoltre il vecchio telefono deve poter aprire la versione web di CamGuard.');
-          return;
-        }
         const lanRes = await apiFetch('/api/lan-info');
         let hostUrl = window.location.origin;
         if (lanRes.ok) {
