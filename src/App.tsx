@@ -176,6 +176,23 @@ export default function App() {
       const session = String(data.sessionId), code = String(data.pin);
       const url = `${getSignalingBaseUrl()}/#camera&session=${encodeURIComponent(session)}&pin=${encodeURIComponent(code)}`;
       const qr = await generateQrDataUrl(url);
+      // Register the viewer tile immediately: it owns the receiving WebRTC peer connection.
+      const pairedCamera: CameraDevice = {
+        id: session,
+        name: 'Nuovo telefono',
+        type: 'phone',
+        status: 'connecting',
+        sessionId: session,
+        pin: code,
+        signalingBaseUrl: getSignalingBaseUrl(),
+        createdAt: Date.now(),
+        lastSeen: Date.now(),
+        facingMode: 'environment',
+        resolution: '1280x720',
+        fps: 30,
+      };
+      const existing = cameras.some((camera) => camera.sessionId === session);
+      if (!existing) saveCameras([pairedCamera, ...cameras]);
       setPairingSessionId(session); setPairingPin(code); setPairingQr(qr); setPairingCopied(false);
     } catch (error) {
       setPairingError(error instanceof Error ? error.message : 'Errore durante la creazione del collegamento.');
