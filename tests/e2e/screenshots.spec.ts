@@ -78,3 +78,38 @@ test('signaling join rejects an incorrect PIN and accepts the valid PIN', async 
   expect(joined.ok()).toBeTruthy();
   expect((await joined.json()).success).toBe(true);
 });
+
+
+test('signaling leave requires the correct PIN and only then removes the session', async ({ request }) => {
+  const created = await request.post('/api/signaling/create', {
+    data: { name: 'Playwright leave authorization test' },
+  });
+  expect(created.ok()).toBeTruthy();
+  const session = await created.json();
+
+  const missingPin = await request.post(`/api/signaling/${session.sessionId}/leave`, {
+    data: {},
+  });
+  expect(missingPin.status()).toBe(403);
+
+  const incorrectPin = await request.post(`/api/signaling/${session.sessionId}/leave`, {
+    data: { pin: '000000' },
+  });
+  expect(incorrectPin.status()).toBe(403);
+
+  const stillExists = await request.get(
+    `/api/signaling/${session.sessionId}/messages?role=viewer&pin=${encodeURIComponent(session.pin)}&since=0`
+  );
+  expect(stillExists.ok()).toBeTruthy();
+
+  const authorized = await request.post(`/api/signaling/${session.sessionId}/leave`, {
+    data: { pin: session.pin },
+  });
+  expect(authorized.ok()).toBeTruthy();
+  expect((await authorized.json()).success).toBe(true);
+
+  const removed = await request.get(
+    `/api/signaling/${session.sessionId}/messages?role=viewer&pin=${encodeURIComponent(session.pin)}&since=0`
+  );
+  expect(removed.status()).toBe(404);
+});
