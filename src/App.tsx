@@ -221,6 +221,8 @@ export type NavDestination = 'welcome' | 'camera_mode' | 'control_center';
 
 export default function App() {
   const [currentDestination, setCurrentDestination] = useState<NavDestination>('welcome');
+  const [pairedSessionId, setPairedSessionId] = useState<string | undefined>(undefined);
+  const [pairedPin, setPairedPin] = useState<string | undefined>(undefined);
   const [bottomTab, setBottomTab] = useState<'centro' | 'eventi' | 'mappa' | 'impostazioni'>('centro');
 
   // Cameras State
@@ -329,9 +331,22 @@ export default function App() {
     return 'Buonasera';
   }, [currentHour]);
 
-  // Enforce startDestination = 'welcome' unconditionally at startup.
+  // Preserve pairing parameters from a QR link before clearing the URL hash.
   useEffect(() => {
-    if (window.location.hash) {
+    const hash = window.location.hash;
+    if (hash.startsWith('#camera')) {
+      const query = hash.slice('#camera'.length).replace(/^&/, '');
+      const params = new URLSearchParams(query);
+      const sessionId = params.get('session');
+      const pin = params.get('pin');
+      if (sessionId) {
+        setPairedSessionId(sessionId);
+        setPairedPin(pin || undefined);
+        setCurrentDestination('camera_mode');
+      }
+    }
+
+    if (hash) {
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
     }
   }, []);
@@ -468,7 +483,13 @@ export default function App() {
   if (currentDestination === 'camera_mode') {
     return (
       <PhoneCameraScreen
-        onExit={() => navigateTo('welcome')}
+        initialSessionId={pairedSessionId}
+        initialPin={pairedPin}
+        onExit={() => {
+          setPairedSessionId(undefined);
+          setPairedPin(undefined);
+          navigateTo('welcome');
+        }}
       />
     );
   }
