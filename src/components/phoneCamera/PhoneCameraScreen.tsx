@@ -261,10 +261,26 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
           }
         };
 
-        if (localStreamRef.current) {
-          localStreamRef.current.getTracks().forEach((track) => {
-            pc.addTrack(track, localStreamRef.current!);
+        // Create the media sections explicitly before the first offer. The phone
+        // is the offerer and must publish video immediately; audio stays negotiated
+        // bidirectionally so intercom does not require a second competing offer.
+        const initialTracks = localStreamRef.current?.getTracks() ?? [];
+        const initialVideoTrack = initialTracks.find((track) => track.kind === 'video');
+        const initialAudioTrack = initialTracks.find((track) => track.kind === 'audio');
+        if (!initialVideoTrack) {
+          throw new Error('Nessuna traccia video disponibile per la negoziazione iniziale.');
+        }
+        pc.addTransceiver(initialVideoTrack, {
+          direction: 'sendonly',
+          streams: localStreamRef.current ? [localStreamRef.current] : [],
+        });
+        if (initialAudioTrack) {
+          pc.addTransceiver(initialAudioTrack, {
+            direction: 'sendrecv',
+            streams: localStreamRef.current ? [localStreamRef.current] : [],
           });
+        } else {
+          pc.addTransceiver('audio', { direction: 'recvonly' });
         }
 
         pc.ontrack = (event) => {
@@ -294,6 +310,10 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
 
         signaling.onMessage(async (msg) => {
           if (msg.type === 'offer') {
+            // Recover from offer glare if an older dashboard sends a second offer.
+            if (pc.signalingState === 'have-local-offer') {
+              await pc.setLocalDescription({ type: 'rollback' });
+            }
             await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
             // The dashboard viewer may renegotiate when enabling the intercom.
             // Apply ICE gathered before the offer so video and audio work independently.
@@ -340,10 +360,9 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         // The phone must negotiate its camera video from the first offer.
         // Previously video was explicitly disabled here, so the dashboard only
         // began receiving frames after pressing Talk caused an audio renegotiation.
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true,
-        });
+        // Tracks/transceivers above define the media sections. Do not rely on
+        // legacy offerToReceiveVideo flags, which are ignored by some WebViews.
+        const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         await signaling.sendMessage('offer', offer);
       } catch (err) {
