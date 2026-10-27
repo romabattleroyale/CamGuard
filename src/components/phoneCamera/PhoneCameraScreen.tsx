@@ -235,6 +235,14 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         setSessionId(activeSessionId);
         if (activePin) setPin(activePin);
 
+        // Confirm a live stream is now attached before the UI claims transmission is active.
+        if (localStreamRef.current?.getVideoTracks().some((track) => track.readyState === 'live')) {
+          setPermissionError(null);
+        } else {
+          setPermissionError('Sessione creata ma fotocamera non attiva. Controlla i permessi e riprova.');
+          return;
+        }
+
         // Generate pairing QR data URL
         const pairUrl = `${window.location.origin}/#camera&session=${activeSessionId}&pin=${activePin}`;
         generateQrDataUrl(pairUrl).then((url) => {
