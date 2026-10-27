@@ -13,7 +13,7 @@ test('welcome screen renders and captures desktop/mobile screenshots', async ({ 
   page.on('pageerror', error => pageErrors.push(error.message));
 
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: /CamGest/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Cam\s*Gest/i })).toBeVisible();
   await expect(page.getByText(/Sicurezza connessa ad alta definizione/i)).toBeVisible();
   await page.screenshot({
     path: path.join(screenshotDir, `welcome-${testInfo.project.name}.png`),
