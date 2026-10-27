@@ -383,8 +383,8 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
         state: pc.signalingState,
         localDescriptionType: pc.localDescription?.type ?? null,
         remoteDescriptionType: pc.remoteDescription?.type ?? null,
-        localHasVideoMLine: /(^|\\r?\\n)m=video /m.test(pc.localDescription?.sdp ?? ''),
-        remoteHasVideoMLine: /(^|\\r?\\n)m=video /m.test(pc.remoteDescription?.sdp ?? ''),
+        localHasVideoMLine: /(^|\r?\n)m=video /m.test(pc.localDescription?.sdp ?? ''),
+        remoteHasVideoMLine: /(^|\r?\n)m=video /m.test(pc.remoteDescription?.sdp ?? ''),
       });
       setDiagnosticSdp({
         local: pc.localDescription?.sdp ?? diagnosticSdp.local,
@@ -408,8 +408,8 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
           setDiagnosticSdp((previous) => ({ ...previous, remote: remoteSdp }));
           writeDiagnostic('SDP OFFERTA ricevuta', {
             type: msg.payload?.type ?? null,
-            hasVideoMLine: /(^|\\r?\\n)m=video /m.test(remoteSdp),
-            hasAudioMLine: /(^|\\r?\\n)m=audio /m.test(remoteSdp),
+            hasVideoMLine: /(^|\r?\n)m=video /m.test(remoteSdp),
+            hasAudioMLine: /(^|\r?\n)m=audio /m.test(remoteSdp),
             sdpLength: remoteSdp.length,
           });
           if (pc.signalingState === 'have-local-offer') {
@@ -422,13 +422,13 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
           }));
           writeDiagnostic('setRemoteDescription(offer) completato', {
             signalingState: pc.signalingState,
-            remoteHasVideoMLine: /(^|\\r?\\n)m=video /m.test(pc.remoteDescription?.sdp ?? ''),
+            remoteHasVideoMLine: /(^|\r?\n)m=video /m.test(pc.remoteDescription?.sdp ?? ''),
           });
           await flushPendingIceCandidates();
           const answer = await pc.createAnswer();
           writeDiagnostic('createAnswer completato', {
             type: answer.type,
-            hasVideoMLine: /(^|\\r?\\n)m=video /m.test(answer.sdp ?? ''),
+            hasVideoMLine: /(^|\r?\n)m=video /m.test(answer.sdp ?? ''),
             sdpLength: answer.sdp?.length ?? 0,
           });
           await pc.setLocalDescription(answer);
@@ -436,8 +436,8 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
           setDiagnosticSdp((previous) => ({ ...previous, local: localSdp }));
           writeDiagnostic('SDP RISPOSTA inviata', {
             type: pc.localDescription?.type ?? answer.type,
-            hasVideoMLine: /(^|\\r?\\n)m=video /m.test(localSdp),
-            hasAudioMLine: /(^|\\r?\\n)m=audio /m.test(localSdp),
+            hasVideoMLine: /(^|\r?\n)m=video /m.test(localSdp),
+            hasAudioMLine: /(^|\r?\n)m=audio /m.test(localSdp),
             sdpLength: localSdp.length,
           });
           await signaling.sendMessage('answer', pc.localDescription ?? answer);
@@ -447,7 +447,7 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
           setDiagnosticSdp((previous) => ({ ...previous, remote: remoteSdp }));
           writeDiagnostic('SDP RISPOSTA ricevuta', {
             type: msg.payload?.type ?? null,
-            hasVideoMLine: /(^|\\r?\\n)m=video /m.test(remoteSdp),
+            hasVideoMLine: /(^|\r?\n)m=video /m.test(remoteSdp),
             sdpLength: remoteSdp.length,
           });
           if (pc.signalingState !== 'stable') {
@@ -793,7 +793,6 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
               autoPlay
               playsInline
               muted
-              onDoubleClick={toggleDiagnosticsWithDoubleTap}
               onTouchEnd={toggleDiagnosticsWithDoubleTap}
             />
           ) : (
