@@ -754,8 +754,10 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
               </div>
 
               <div className="pt-1 space-y-2">
-                <div className="text-xs font-mono text-[#4FC3F7] font-bold">
-                  PIN di connessione: {pin || '------'}
+                <div className="rounded-xl bg-[#0B0F14] border border-[#1F2933] p-3 space-y-1">
+                  <div className="text-[10px] uppercase tracking-widest text-[#94A3B8]">Codice sessione per inserimento manuale</div>
+                  <div className="text-xs font-mono text-white break-all select-all">{sessionId || 'Creazione sessione...'}</div>
+                  <div className="text-xs font-mono text-[#4FC3F7] font-bold">PIN di connessione: {pin || '------'}</div>
                 </div>
 
                 <button
