@@ -89,7 +89,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
     if (camera.type !== 'phone' || !camera.sessionId || !isOnline) return;
 
     let isSubscribed = true;
-    const signaling = new SignalingClient(camera.sessionId, 'viewer');
+    const signaling = new SignalingClient(camera.sessionId, 'viewer', camera.pin || '');
     signalingRef.current = signaling;
 
     const pc = new RTCPeerConnection(createPeerConnectionConfig());
@@ -182,7 +182,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
     try {
       if (camera.type === 'phone' && camera.sessionId) {
         const response = await apiFetch(
-          `/api/signaling/${encodeURIComponent(camera.sessionId)}/messages?role=viewer&since=${Date.now() - 15000}`
+          `/api/signaling/${encodeURIComponent(camera.sessionId)}/messages?role=viewer&pin=${encodeURIComponent(camera.pin || '')}&since=${Date.now() - 15000}`
         );
         if (!response.ok) {
           throw new Error('La sessione della telecamera non è raggiungibile.');
