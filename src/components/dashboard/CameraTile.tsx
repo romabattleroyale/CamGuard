@@ -105,9 +105,9 @@ export const CameraTile: React.FC<CameraTileProps> = ({
     signalingRef.current = signaling;
 
     const pc = new RTCPeerConnection(createPeerConnectionConfig());
-    // Explicitly request incoming video before applying the phone's offer.
-    // This avoids WebViews negotiating a connected peer without a receiving video transceiver.
-    pc.addTransceiver('video', { direction: 'recvonly' });
+    // The phone's initial SDP already contains its video m-line. As the answerer,
+    // let setRemoteDescription create/match that transceiver instead of adding a
+    // duplicate video m-line before the offer arrives.
     peerConnectionRef.current = pc;
     // ICE candidates can arrive in the same polling batch as the offer/answer.
     // Buffer them until the remote SDP is installed instead of dropping them.
@@ -137,25 +137,29 @@ export const CameraTile: React.FC<CameraTileProps> = ({
 
       const video = videoRef.current;
       if (!video || track.kind !== 'video') return;
+      // Explicitly satisfy mobile WebView autoplay policy and attach the stream
+      // as soon as the remote video track arrives.
+      video.muted = true;
+      video.autoplay = true;
+      video.playsInline = true;
       video.srcObject = incomingStream || remoteMediaStream;
-      try {
-        await video.play();
-      } catch (error) {
-        console.error('Riproduzione video remota bloccata', error);
-      }
       const markVideoLive = () => {
         if (video.videoWidth <= 0 || video.videoHeight <= 0) return;
         setIsLive(true);
         setLastActivity('Flusso video ricevuto');
         onUpdate({ ...camera, status: 'online', lastSeen: Date.now() });
       };
-      if (track.muted) {
-        track.onunmute = markVideoLive;
-      } else {
-        markVideoLive();
-      }
+      video.onloadedmetadata = markVideoLive;
       video.onloadeddata = markVideoLive;
       video.onplaying = markVideoLive;
+      video.onresize = markVideoLive;
+      track.onunmute = markVideoLive;
+      try {
+        await video.play();
+        markVideoLive();
+      } catch (error) {
+        console.error('Riproduzione video remota bloccata; riproverò al prossimo evento media', error);
+      }
     };
 
     pc.onicecandidate = (event) => {
