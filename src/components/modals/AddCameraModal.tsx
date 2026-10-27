@@ -121,7 +121,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
           setQrDataUrl(qrUrl);
         }
 
-        const signaling = new SignalingClient(sId, 'viewer');
+        const signaling = new SignalingClient(sId, 'viewer', sPin);
         signalingRef.current = signaling;
 
         signaling.onMessage((msg) => {
@@ -180,6 +180,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
       status: isPhoneConnected ? 'online' : 'connecting',
       sessionId,
       pin,
+      signalingBaseUrl: window.localStorage.getItem('camguard_signaling_server_url') || window.location.origin,
       batteryLevel: 85,
       isCharging: true,
       facingMode: 'environment',
