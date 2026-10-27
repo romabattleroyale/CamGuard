@@ -251,6 +251,16 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
 
         const pc = new RTCPeerConnection(createPeerConnectionConfig());
         peerConnectionRef.current = pc;
+        const logWebRtc = (event: string, details: Record<string, unknown> = {}) => {
+          const payload = { event, sourceAt: new Date().toISOString(), details };
+          console.info('[CamGuard][WebRTC][TELEFONO]', payload);
+          void signaling.sendMessage('status', { cameraInfo: { webrtcDiagnostic: payload } });
+        };
+        logWebRtc('PeerConnection creata', {
+          connectionState: pc.connectionState,
+          iceConnectionState: pc.iceConnectionState,
+          signalingState: pc.signalingState,
+        });
         // The viewer's ICE candidates may arrive before its SDP answer due to polling.
         // Queue them until setRemoteDescription succeeds, then apply them in order.
         const pendingIceCandidates: RTCIceCandidateInit[] = [];
@@ -297,7 +307,28 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
           }
         };
 
+        pc.oniceconnectionstatechange = () => {
+          logWebRtc('iceconnectionstatechange', {
+            state: pc.iceConnectionState,
+            connectionState: pc.connectionState,
+            signalingState: pc.signalingState,
+          });
+        };
+        pc.onsignalingstatechange = () => {
+          logWebRtc('signalingstatechange', {
+            state: pc.signalingState,
+            localDescriptionType: pc.localDescription?.type ?? null,
+            remoteDescriptionType: pc.remoteDescription?.type ?? null,
+            localHasVideoMLine: /(^|\\r?\\n)m=video /m.test(pc.localDescription?.sdp ?? ''),
+            remoteHasVideoMLine: /(^|\\r?\\n)m=video /m.test(pc.remoteDescription?.sdp ?? ''),
+          });
+        };
         pc.onconnectionstatechange = () => {
+          logWebRtc('connectionstatechange', {
+            state: pc.connectionState,
+            iceConnectionState: pc.iceConnectionState,
+            signalingState: pc.signalingState,
+          });
           if (pc.connectionState === 'connected') {
             setViewerCount(1);
           } else if (
@@ -310,6 +341,12 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
 
         signaling.onMessage(async (msg) => {
           if (msg.type === 'offer') {
+            const remoteSdp = String(msg.payload?.sdp ?? '');
+            logWebRtc('SDP OFFERTA ricevuta dal centro di controllo', {
+              type: msg.payload?.type ?? null,
+              hasVideoMLine: /(^|\\r?\\n)m=video /m.test(remoteSdp),
+              sdpLength: remoteSdp.length,
+            });
             // Recover from offer glare if an older dashboard sends a second offer.
             if (pc.signalingState === 'have-local-offer') {
               await pc.setLocalDescription({ type: 'rollback' });
@@ -323,6 +360,12 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
             await signaling.sendMessage('answer', answer);
             setViewerCount(1);
           } else if (msg.type === 'answer') {
+            const remoteSdp = String(msg.payload?.sdp ?? '');
+            logWebRtc('SDP RISPOSTA ricevuta dal centro di controllo', {
+              type: msg.payload?.type ?? null,
+              hasVideoMLine: /(^|\\r?\\n)m=video /m.test(remoteSdp),
+              sdpLength: remoteSdp.length,
+            });
             if (pc.signalingState !== 'stable') {
               await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
               await flushPendingIceCandidates();
@@ -363,8 +406,20 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         // Tracks/transceivers above define the media sections. Do not rely on
         // legacy offerToReceiveVideo flags, which are ignored by some WebViews.
         const offer = await pc.createOffer();
+        logWebRtc('SDP OFFERTA creata', {
+          type: offer.type,
+          hasVideoMLine: /(^|\\r?\\n)m=video /m.test(offer.sdp ?? ''),
+          hasAudioMLine: /(^|\\r?\\n)m=audio /m.test(offer.sdp ?? ''),
+          sdpLength: offer.sdp?.length ?? 0,
+        });
         await pc.setLocalDescription(offer);
-        await signaling.sendMessage('offer', offer);
+        const localSdp = pc.localDescription?.sdp ?? offer.sdp ?? '';
+        logWebRtc('SDP OFFERTA impostata come localDescription', {
+          type: pc.localDescription?.type ?? offer.type,
+          hasVideoMLine: /(^|\\r?\\n)m=video /m.test(localSdp),
+          sdpLength: localSdp.length,
+        });
+        await signaling.sendMessage('offer', pc.localDescription ?? offer);
       } catch (err) {
         console.error('Error starting transmission', err);
       }
