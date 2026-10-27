@@ -127,7 +127,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
         setSessionId(sId);
         setPin(sPin);
 
-        const pairTarget = `${serverBaseUrl}/#camera&session=${sId}&pin=${sPin}`;
+        const pairTarget = `${serverBaseUrl}/?mode=camera&session=${encodeURIComponent(sId)}&pin=${encodeURIComponent(sPin)}`;
         setPairingUrl(pairTarget);
 
         const qrUrl = await generateQrDataUrl(pairTarget);
