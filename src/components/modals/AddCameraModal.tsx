@@ -45,7 +45,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
   const [ipStreamPath, setIpStreamPath] = useState('');
   const [ipSimulateTest] = useState(false);
   const [ipTestStatus, setIpTestStatus] = useState<'idle' | 'checking' | 'error'>('idle');
-  const [ipTestMessage, setIpTestMessage] = useState('Inserisci i dati reali della telecamera. Il test RTSP deve essere eseguito da un relay compatibile; questa schermata non simula una connessione.');
+  const [ipTestMessage, setIpTestMessage] = useState('Inserisci i dati reali della telecamera. Il relay RTSP/ONVIF non è ancora configurato, quindi la registrazione della telecamera IP resta disabilitata.');
 
   // Phone Camera Pairing State
   const [sessionId, setSessionId] = useState<string>('');
@@ -62,19 +62,11 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
   // Sync stream path when brand changes
   const handleBrandChange = (brand: 'tapo' | 'ezviz' | 'reolink' | 'generic') => {
     setIpBrand(brand);
-    if (brand === 'tapo') {
-      setIpName('Tapo C200 Salotto');
-      setIpStreamPath('/stream1');
-    } else if (brand === 'ezviz') {
-      setIpName('EZVIZ C6N Ingresso');
-      setIpStreamPath('/h264Preview_01_main');
-    } else if (brand === 'reolink') {
-      setIpName('Reolink E1 Giardino');
-      setIpStreamPath('/h264Preview_01_main');
-    } else {
-      setIpName('Telecamera IP RTSP');
-      setIpStreamPath('/live/ch0');
-    }
+    // Brand selection is only a label; do not silently invent a camera path or model.
+    setIpName('');
+    setIpStreamPath('');
+    setIpTestStatus('idle');
+    setIpTestMessage('Inserisci il nome e il percorso RTSP esatti del tuo dispositivo. La compatibilità va verificata dal relay.');
   };
 
   // Setup session when "phone" is selected
@@ -169,9 +161,14 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
   };
 
   const handleAddPhoneCamera = () => {
+    if (!sessionId || !pin || !isPhoneConnected) {
+      setIpTestStatus('error');
+      setIpTestMessage('Il telefono non risulta collegato al server di segnalazione. Non è stato aggiunto.');
+      return;
+    }
     const newPhoneCam: CameraDevice = {
       id: sessionId || 'phone_' + Math.random().toString(36).substring(2, 9),
-      name: phoneCamName || 'Telefono Camera',
+      name: phoneCamName.trim() || 'Telefono Camera',
       type: 'phone',
       status: isPhoneConnected ? 'online' : 'connecting',
       sessionId,
