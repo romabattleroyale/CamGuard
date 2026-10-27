@@ -76,6 +76,7 @@ export const PhoneCameraViewer: React.FC<PhoneCameraViewerProps> = ({ initialSes
 
       const signaling = new SignalingClient(id, 'viewer', code);
       signalingRef.current = signaling;
+      const pendingCandidates: RTCIceCandidateInit[] = [];
       pc.onicecandidate = (event) => {
         if (event.candidate) void signaling.sendMessage('candidate', event.candidate);
       };
@@ -84,11 +85,18 @@ export const PhoneCameraViewer: React.FC<PhoneCameraViewerProps> = ({ initialSes
         try {
           if (msg.type === 'offer' && msg.payload && pc.signalingState !== 'closed') {
             await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+            for (const candidate of pendingCandidates.splice(0)) {
+              await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            }
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             await signaling.sendMessage('answer', answer);
-          } else if (msg.type === 'candidate' && msg.payload && pc.remoteDescription) {
-            await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+          } else if (msg.type === 'candidate' && msg.payload) {
+            if (pc.remoteDescription) {
+              await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+            } else {
+              pendingCandidates.push(msg.payload as RTCIceCandidateInit);
+            }
           } else if (msg.type === 'disconnect') {
             setConnected(false);
             setError('Il telefono trasmettitore si è disconnesso.');
