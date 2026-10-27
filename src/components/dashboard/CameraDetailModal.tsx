@@ -67,6 +67,9 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const signalingRef = useRef<SignalingClient | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = useRef<BlobPart[]>([]);
+  const recordingMimeRef = useRef<string>('video/webm');
 
   // Setup WebRTC connection for Phone Camera
   useEffect(() => {
@@ -121,6 +124,10 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
       pc.close();
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach((t) => t.stop());
+        micStreamRef.current = null;
+      }
+      if (recorderRef.current?.state === 'recording') {
+        recorderRef.current.stop();
       }
     };
   }, [camera.sessionId, camera.type]);
@@ -136,59 +143,74 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
   };
 
   const toggleRecording = () => {
-    if (camera.type !== 'phone' || !videoRef.current || !videoRef.current.srcObject) {
-      console.warn('Recording unavailable: no live media stream is attached to this camera.');
+    if (isRecording) {
+      const recorder = recorderRef.current;
+      if (recorder?.state === 'recording') recorder.stop();
+      recorderRef.current = null;
+      setIsRecording(false);
       return;
     }
 
-    const stream = videoRef.current.srcObject as MediaStream;
-    if (!stream.getVideoTracks().some((track) => track.readyState === 'live')) {
-      console.warn('Recording unavailable: camera video track is not live.');
+    if (camera.type !== 'phone' || !videoRef.current?.srcObject) {
+      console.warn('Registrazione non disponibile: nessun flusso video reale è collegato.');
       return;
     }
 
-    // Browser recording is local to the current session; persistence/export is a separate feature.
+    const sourceStream = videoRef.current.srcObject as MediaStream;
+    if (!sourceStream.getVideoTracks().some((track) => track.readyState === 'live')) {
+      console.warn('Registrazione non disponibile: la traccia video non è attiva.');
+      return;
+    }
+    if (typeof MediaRecorder === 'undefined') {
+      console.warn('Questo dispositivo non supporta la registrazione video in questa WebView.');
+      return;
+    }
+
+    const mime = [
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm',
+    ].find((candidate) => MediaRecorder.isTypeSupported(candidate));
+    if (!mime) {
+      console.warn('Nessun formato di registrazione compatibile è disponibile.');
+      return;
+    }
+
     try {
-      const supportedMimeType = [
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm',
-      ].find((mime) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(mime));
-      if (typeof MediaRecorder === 'undefined' || !supportedMimeType) {
-        console.warn('This WebView does not support MediaRecorder with a compatible format.');
-        return;
-      }
-
-      const recorder = new MediaRecorder(stream, { mimeType: supportedMimeType });
-      const chunks: BlobPart[] = [];
+      recordingChunksRef.current = [];
+      recordingMimeRef.current = mime;
+      const recorder = new MediaRecorder(sourceStream, { mimeType: mime });
+      recorderRef.current = recorder;
       recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunks.push(event.data);
+        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
+      };
+      recorder.onerror = (event) => {
+        console.error('Errore durante la registrazione', event);
+        setIsRecording(false);
+        recorderRef.current = null;
       };
       recorder.onstop = () => {
-        if (!chunks.length) return;
-        const blob = new Blob(chunks, { type: supportedMimeType });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `camguard-${camera.id}-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
-        link.click();
-        window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      };
-
-      if (!isRecording) {
-        recorder.start(1000);
-        (window as any).__camguardActiveRecorder = recorder;
-        setIsRecording(true);
-        playChimeSound();
-      } else {
-        const activeRecorder = (window as any).__camguardActiveRecorder as MediaRecorder | undefined;
-        if (activeRecorder?.state === 'recording') activeRecorder.stop();
-        (window as any).__camguardActiveRecorder = undefined;
+        const chunks = recordingChunksRef.current;
+        recordingChunksRef.current = [];
+        if (chunks.length) {
+          const blob = new Blob(chunks, { type: recordingMimeRef.current });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `camguard-${camera.id}-${new Date().toISOString().replace(/[:.]/g, '-')}.webm`;
+          link.click();
+          window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+        }
         setIsRecording(false);
-        playChimeSound();
-      }
+        recorderRef.current = null;
+      };
+      recorder.start(1000);
+      setIsRecording(true);
+      playChimeSound();
     } catch (error) {
-      console.error('Unable to start/stop local recording', error);
+      console.error('Impossibile avviare la registrazione', error);
+      setIsRecording(false);
+      recorderRef.current = null;
     }
   };
 
