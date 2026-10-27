@@ -1,4 +1,5 @@
 import { CameraDevice } from '../types/camera';
+import { apiFetch } from './api';
 
 export interface SignalingMessage {
   id: string;
@@ -99,7 +100,7 @@ export class SignalingClient {
 
     // Send to LAN server
     try {
-      await fetch(`/api/signaling/${this.sessionId}/message`, {
+      await apiFetch(`/api/signaling/${this.sessionId}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -120,7 +121,7 @@ export class SignalingClient {
     const poll = async () => {
       if (this.isDestroyed) return;
       try {
-        const res = await fetch(
+        const res = await apiFetch(
           `/api/signaling/${this.sessionId}/messages?role=${this.role}&since=${Math.max(0, this.lastTimestamp - 1)}`
         );
         if (res.ok) {
