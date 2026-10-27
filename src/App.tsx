@@ -961,6 +961,7 @@ export default function App() {
                         camera={camera}
                         index={idx}
                         privacyMode={privacyMode}
+                        suspendStream={Boolean(selectedCamera)}
                         isFavorite={favoriteIds.includes(camera.id)}
                         onToggleFavorite={toggleFavorite}
                         onSelect={(cam) => setSelectedCamera(cam)}
