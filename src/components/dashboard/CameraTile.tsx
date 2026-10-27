@@ -318,13 +318,20 @@ export const CameraTile: React.FC<CameraTileProps> = ({
             }`}
           >
             {camera.type === 'phone' ? (
-              <video
-                ref={videoRef}
-                className="w-full h-full object-cover"
-                autoPlay
-                playsInline
-                muted
-              />
+              <>
+                <video
+                  ref={videoRef}
+                  className="w-full h-full object-cover"
+                  autoPlay
+                  playsInline
+                  muted
+                />
+                {!isLive && (
+                  <div className="absolute inset-x-3 bottom-3 z-20 rounded-lg bg-black/80 px-3 py-2 text-[11px] font-semibold text-amber-200 backdrop-blur-sm">
+                    Flusso video non collegato
+                  </div>
+                )}
+              </>
             ) : (
               <div className="w-full h-full relative overflow-hidden">
                 {/* Photorealistic room environment base image */}
