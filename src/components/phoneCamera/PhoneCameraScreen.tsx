@@ -208,7 +208,8 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
     // Auto-create or join transmission session
     let isMounted = true;
     async function startTransmissionSession() {
-      await initLocalStream('environment');
+      const initialStream = await initLocalStream('environment');
+      if (!initialStream || !isMounted) return;
 
       try {
         let activeSessionId = initialSessionId;
