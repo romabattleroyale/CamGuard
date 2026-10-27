@@ -183,8 +183,10 @@ export default function App() {
     setServerCheckStatus('checking');
     setServerCheckMessage('Verifica della connessione...');
     try {
-      const response = await apiFetch('/api/lan-info');
+      const response = await fetch(`${baseUrl.replace(/\\/+$/, '')}/api/lan-info`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) throw new Error('Il server risponde con una pagina web invece che con le API CamGuard.');
       const info = await response.json();
       setServerCheckStatus('online');
       setServerCheckMessage(`Server raggiungibile · ${info.localIp || new URL(baseUrl).host}`);
