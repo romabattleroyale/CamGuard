@@ -300,14 +300,25 @@ app.get('/api/signaling/:sessionId/messages', (req: Request, res: Response) => {
   });
 });
 
-// Terminate or remove session
+// Terminate or remove session. The session PIN is required to prevent
+// anyone who only knows the session ID from disconnecting a camera.
 app.post('/api/signaling/:sessionId/leave', (req: Request, res: Response) => {
   const { sessionId } = req.params;
   const session = sessions.get(sessionId);
-  if (session) {
-    if (session.pin) pinIndex.delete(session.pin);
-    sessions.delete(sessionId);
+
+  if (!session) {
+    res.status(404).json({ error: 'Sessione scaduta o inesistente' });
+    return;
   }
+
+  const suppliedPin = typeof req.body?.pin === 'string' ? req.body.pin.trim() : '';
+  if (!suppliedPin || suppliedPin !== session.pin) {
+    res.status(403).json({ error: 'PIN di abbinamento non valido' });
+    return;
+  }
+
+  pinIndex.delete(session.pin);
+  sessions.delete(sessionId);
   res.json({ success: true });
 });
 
