@@ -32,6 +32,9 @@ test('camera mode opens and captures screenshot', async ({ page }, testInfo) => 
     fullPage: true,
     animations: 'disabled',
   });
+  await expect(page.getByText('FOTOCAMERA ATTIVA', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /La tua casa, sotto controllo/i })).toBeVisible();
+  await expect(page.getByText('Collega una telecamera telefono')).toBeVisible();
   await expect(page.locator('#root')).not.toBeEmpty();
 });
 
@@ -45,4 +48,25 @@ test('control center opens and captures screenshot', async ({ page }, testInfo) 
     animations: 'disabled',
   });
   await expect(page.locator('#root')).not.toBeEmpty();
+});
+
+test('signaling join rejects an incorrect PIN and accepts the valid PIN', async ({ request }) => {
+  const created = await request.post('/api/signaling/create', {
+    data: { name: 'Playwright PIN test' },
+  });
+  expect(created.ok()).toBeTruthy();
+  const session = await created.json();
+  expect(session.sessionId).toBeTruthy();
+  expect(session.pin).toMatch(/^\d{6}$/);
+
+  const rejected = await request.post('/api/signaling/join', {
+    data: { sessionId: session.sessionId, pin: '000000', cameraInfo: {} },
+  });
+  expect(rejected.status()).toBe(403);
+
+  const joined = await request.post('/api/signaling/join', {
+    data: { sessionId: session.sessionId, pin: session.pin, cameraInfo: { resolution: '1280x720' } },
+  });
+  expect(joined.ok()).toBeTruthy();
+  expect((await joined.json()).success).toBe(true);
 });
