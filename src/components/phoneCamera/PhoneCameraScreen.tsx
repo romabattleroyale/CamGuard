@@ -295,6 +295,9 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         signaling.onMessage(async (msg) => {
           if (msg.type === 'offer') {
             await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+            // The dashboard viewer may renegotiate when enabling the intercom.
+            // Apply ICE gathered before the offer so video and audio work independently.
+            await flushPendingIceCandidates();
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             await signaling.sendMessage('answer', answer);
@@ -334,9 +337,12 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         });
 
         // Announce readiness
+        // The phone must negotiate its camera video from the first offer.
+        // Previously video was explicitly disabled here, so the dashboard only
+        // began receiving frames after pressing Talk caused an audio renegotiation.
         const offer = await pc.createOffer({
           offerToReceiveAudio: true,
-          offerToReceiveVideo: false,
+          offerToReceiveVideo: true,
         });
         await pc.setLocalDescription(offer);
         await signaling.sendMessage('offer', offer);
