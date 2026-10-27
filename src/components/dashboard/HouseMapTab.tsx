@@ -1,101 +1,56 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import {
-  Camera,
-  Layers,
-  Play,
-  Info,
-  Maximize2,
-  Shield,
-  Eye,
-  Clock,
-  ChevronRight,
-  Sparkles,
-  Wifi
-} from 'lucide-react';
-import { CameraDevice } from '../../types/camera';
-import { ASSETS } from '../../assets/images';
-
-interface HouseMapTabProps {
-  cameras: CameraDevice[];
-  onSelectCamera: (camera: CameraDevice) => void;
-}
-
-interface MapCameraPin {
-  id: string;
-  name: string;
-  roomName: string;
-  floor: 'terra' | 'primo' | 'esterno';
-  xPercent: number; // Position X in % on the floorplan image
-  yPercent: number; // Position Y in %
-  rotationAngle: number; // Angle of view cone in degrees
-  coneColor: string;
-}
-
-const DEFAULT_PINS: MapCameraPin[] = [
-  {
-    id: 'ip_tapo_c200',
-    name: 'Salotto - Tapo C200',
-    roomName: 'Salotto',
-    floor: 'terra',
-    xPercent: 78,
-    yPercent: 34,
-    rotationAngle: 215,
-    coneColor: '#36C5FF',
-  },
-  {
-    id: 'ip_ezviz_c6n',
-    name: 'Ingresso - EZVIZ C6N',
-    roomName: 'Ingresso',
-    floor: 'terra',
-    xPercent: 49,
-    yPercent: 20,
-    rotationAngle: 180,
-    coneColor: '#45D7B0',
-  },
-  {
-    id: 'ip_retro_garage',
-    name: 'Garage - Reolink E1',
-    roomName: 'Garage',
-    floor: 'terra',
-    xPercent: 24,
-    yPercent: 38,
-    rotationAngle: 90,
-    coneColor: '#FFC56E',
-  },
-  {
-    id: 'ip_giardino_c310',
-    name: 'Giardino - Tapo C310',
-    roomName: 'Giardino',
-    floor: 'esterno',
-    xPercent: 70,
-    yPercent: 78,
-    rotationAngle: 330,
-    coneColor: '#36C5FF',
-  },
-];
-
 export const HouseMapTab: React.FC<HouseMapTabProps> = ({
   cameras,
   onSelectCamera,
 }) => {
   const [selectedFloor, setSelectedFloor] = useState<'terra' | 'primo' | 'esterno'>('terra');
-  const [activeCameraId, setActiveCameraId] = useState<string>('ip_giardino_c310');
+  const [activeCameraId, setActiveCameraId] = useState<string>('');
 
-  // Match active pin with real camera device
-  const activePin = DEFAULT_PINS.find((p) => p.id === activeCameraId) || DEFAULT_PINS[0];
-  const activeCamera = cameras.find((c) => c.id === activePin.id) || cameras[0];
+  const availableCameras = cameras.filter((camera) => Boolean(camera.location || camera.room));
+  const activeCamera = availableCameras.find((camera) => camera.id === activeCameraId) || availableCameras[0];
 
-  // Resolve room image for the selected camera
-  const getRoomThumbnail = (cam: CameraDevice | undefined) => {
-    if (!cam) return ASSETS.roomGardenPatio;
-    const nameLower = cam.name.toLowerCase();
-    if (nameLower.includes('salotto') || nameLower.includes('living')) return ASSETS.roomLivingRoom;
-    if (nameLower.includes('giardino') || nameLower.includes('patio')) return ASSETS.roomGardenPatio;
-    if (nameLower.includes('garage')) return ASSETS.roomModernGarage;
-    if (nameLower.includes('ingresso') || nameLower.includes('hallway')) return ASSETS.roomHallwayEntrance;
-    return ASSETS.dashboardInteriorNight;
-  };
+  const floorLabel = (camera: CameraDevice) => camera.location || camera.room || 'Posizione non impostata';
+
+  return (
+    <div className="space-y-4 max-w-5xl mx-auto">
+      <div className="p-4 rounded-2xl bg-[#101C2B] border border-[#24364D]">
+        <h2 className="text-base font-bold text-[#F4F8FF] tracking-tight">Mappa della casa</h2>
+        <p className="text-xs text-[#99B0CA] mt-1">La mappa mostra soltanto telecamere reali con posizione configurata.</p>
+      </div>
+
+      {!availableCameras.length ? (
+        <div className="p-8 rounded-2xl bg-[#101C2B] border border-dashed border-[#24364D] text-center">
+          <Camera className="w-8 h-8 mx-auto text-[#64748B] mb-3" />
+          <h3 className="text-sm font-bold text-[#F4F8FF]">Nessuna telecamera posizionata</h3>
+          <p className="text-xs text-[#99B0CA] mt-2">Aggiungi una telecamera reale e assegnale una stanza o una posizione per visualizzarla qui.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {availableCameras.map((camera) => (
+            <button
+              key={camera.id}
+              type="button"
+              onClick={() => {
+                setActiveCameraId(camera.id);
+                onSelectCamera(camera);
+              }}
+              className="w-full p-4 rounded-2xl bg-[#101C2B] border border-[#24364D] text-left flex items-center justify-between gap-3 hover:border-[#36C5FF]/60"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-[#F4F8FF] truncate">{camera.name}</p>
+                <p className="text-xs text-[#99B0CA] mt-1">{floorLabel(camera)}</p>
+              </div>
+              <span className={`text-xs font-semibold ${camera.status === 'online' ? 'text-[#45D7B0]' : 'text-[#FF6577]'}`}>
+                {camera.status === 'online' ? 'Stato verificato dalla connessione' : 'Non collegata'}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 
   const currentThumbnail = getRoomThumbnail(activeCamera);
 
