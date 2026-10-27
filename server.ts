@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { createServer as createViteServer } from 'vite';
 import os from 'os';
 import path from 'path';
+import crypto from 'node:crypto';
 
 interface SignalingMessage {
   id: string;
@@ -33,7 +34,20 @@ interface Session {
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-app.use(express.json());
+// Bound JSON payload size so signaling endpoints cannot accept arbitrary large bodies.
+app.use(express.json({ limit: '256kb' }));
+
+const allowedMessageTypes = new Set([
+  'offer',
+  'answer',
+  'candidate',
+  'command',
+  'status',
+  'disconnect',
+]);
+function isValidRole(value: unknown): value is 'viewer' | 'camera' {
+  return value === 'viewer' || value === 'camera';
+}
 
 // In-memory sessions store (kept for 2 hours)
 const sessions = new Map<string, Session>();
@@ -81,17 +95,18 @@ app.get('/api/lan-info', (req: Request, res: Response) => {
 
 // Create new camera session (initiated by Viewer)
 app.post('/api/signaling/create', (req: Request, res: Response) => {
-  const id = 'cam_' + Math.random().toString(36).substring(2, 9);
-  // 6-digit numeric PIN
-  let pin = Math.floor(100000 + Math.random() * 900000).toString();
-  while (pinIndex.has(pin)) {
-    pin = Math.floor(100000 + Math.random() * 900000).toString();
-  }
+  const id = `cam_${crypto.randomUUID()}`;
+  // Use a cryptographically secure 6-digit PIN and avoid collisions.
+  let pin = '';
+  do {
+    pin = String(crypto.randomInt(100000, 1000000));
+  } while (pinIndex.has(pin));
 
+  const requestedName = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
   const session: Session = {
     id,
     pin,
-    name: req.body.name || 'Telefono Camera',
+    name: (requestedName || 'Telefono Camera').slice(0, 80),
     createdAt: Date.now(),
     lastPing: Date.now(),
     messages: [],
@@ -156,14 +171,22 @@ app.post('/api/signaling/:sessionId/message', (req: Request, res: Response) => {
   }
 
   session.lastPing = Date.now();
-  const { sender, type, payload } = req.body;
-  const target = sender === 'viewer' ? 'camera' : 'viewer';
+  const { sender, type, payload } = req.body ?? {};
+  if (!isValidRole(sender) || typeof type !== 'string' || !allowedMessageTypes.has(type)) {
+    res.status(400).json({ error: 'Ruolo o tipo di messaggio non valido' });
+    return;
+  }
+  if (payload === undefined || (typeof payload !== 'object' && typeof payload !== 'string')) {
+    res.status(400).json({ error: 'Payload non valido' });
+    return;
+  }
 
+  const target = sender === 'viewer' ? 'camera' : 'viewer';
   const message: SignalingMessage = {
-    id: 'msg_' + Math.random().toString(36).substring(2, 9),
+    id: `msg_${crypto.randomUUID()}`,
     sender,
     target,
-    type,
+    type: type as SignalingMessage['type'],
     payload,
     timestamp: Date.now(),
   };
@@ -185,8 +208,15 @@ app.post('/api/signaling/:sessionId/message', (req: Request, res: Response) => {
 // Poll messages intended for this role
 app.get('/api/signaling/:sessionId/messages', (req: Request, res: Response) => {
   const { sessionId } = req.params;
-  const role = req.query.role as 'viewer' | 'camera';
-  const since = parseInt(req.query.since as string, 10) || 0;
+  const rawRole = req.query.role;
+  if (!isValidRole(rawRole)) {
+    res.status(400).json({ error: 'Ruolo non valido' });
+    return;
+  }
+  const role = rawRole;
+  const rawSince = req.query.since;
+  const parsedSince = typeof rawSince === 'string' ? Number(rawSince) : 0;
+  const since = Number.isFinite(parsedSince) && parsedSince >= 0 ? parsedSince : 0;
 
   const session = sessions.get(sessionId);
   if (!session) {
