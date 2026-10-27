@@ -37,13 +37,15 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
 
   // IP Camera Form State
   const [ipBrand, setIpBrand] = useState<'tapo' | 'ezviz' | 'reolink' | 'generic'>('tapo');
-  const [ipName, setIpName] = useState('Telecamera Tapo Salotto');
-  const [ipAddress, setIpAddress] = useState('192.168.1.120');
+  const [ipName, setIpName] = useState('');
+  const [ipAddress, setIpAddress] = useState('');
   const [ipPort, setIpPort] = useState('554');
-  const [ipUsername, setIpUsername] = useState('admin');
+  const [ipUsername, setIpUsername] = useState('');
   const [ipPassword, setIpPassword] = useState('');
-  const [ipStreamPath, setIpStreamPath] = useState('/stream1');
-  const [ipSimulateTest, setIpSimulateTest] = useState(true);
+  const [ipStreamPath, setIpStreamPath] = useState('');
+  const [ipSimulateTest] = useState(false);
+  const [ipTestStatus, setIpTestStatus] = useState<'idle' | 'checking' | 'error'>('idle');
+  const [ipTestMessage, setIpTestMessage] = useState('Inserisci i dati reali della telecamera. Il test RTSP deve essere eseguito da un relay compatibile; questa schermata non simula una connessione.');
 
   // Phone Camera Pairing State
   const [sessionId, setSessionId] = useState<string>('');
@@ -149,27 +151,21 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
 
   const handleAddIpCamera = (e: React.FormEvent) => {
     e.preventDefault();
-    const newCam: CameraDevice = {
-      id: 'ip_' + Math.random().toString(36).substring(2, 9),
-      name: ipName || 'Telecamera IP',
-      type: 'ip',
-      brand: ipBrand,
-      status: 'online',
-      ip: ipAddress,
-      port: parseInt(ipPort, 10) || 554,
-      username: ipUsername,
-      password: ipPassword,
-      streamPath: ipStreamPath,
-      rtspUrl: `rtsp://${ipUsername ? ipUsername + ':***@' : ''}${ipAddress}:${ipPort}${ipStreamPath}`,
-      isSimulated: ipSimulateTest,
-      ptzSupport: true,
-      currentPan: 0,
-      currentTilt: 0,
-      createdAt: Date.now(),
-    };
+    const cleanAddress = ipAddress.trim();
+    const cleanName = ipName.trim();
+    const cleanPath = ipStreamPath.trim();
+    const port = Number(ipPort);
 
-    onAddCamera(newCam);
-    onClose();
+    if (!cleanName || !cleanAddress || !cleanPath || !Number.isInteger(port) || port < 1 || port > 65535) {
+      setIpTestStatus('error');
+      setIpTestMessage('Compila nome, indirizzo IP, porta valida e percorso RTSP reale.');
+      return;
+    }
+
+    // The browser cannot validate RTSP directly and this app has no RTSP relay yet.
+    // Do not save the camera as online or claim a successful connection.
+    setIpTestStatus('error');
+    setIpTestMessage('Telecamera non aggiunta: il relay RTSP/ONVIF reale non è ancora configurato. Non verrà mostrata come collegata finché il flusso non sarà verificato.');
   };
 
   const handleAddPhoneCamera = () => {
