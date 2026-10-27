@@ -17,6 +17,7 @@ export interface CameraDevice {
   // Specific to Phone Camera
   sessionId?: string;
   pin?: string;
+  signalingBaseUrl?: string;
   batteryLevel?: number; // 0 to 100
   isCharging?: boolean;
   facingMode?: 'environment' | 'user';
