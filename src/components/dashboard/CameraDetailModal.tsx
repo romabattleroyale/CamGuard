@@ -80,6 +80,8 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
     signalingRef.current = signaling;
 
     const pc = new RTCPeerConnection(createPeerConnectionConfig());
+    // Explicitly request incoming video before applying the phone's offer.
+    pc.addTransceiver('video', { direction: 'recvonly' });
     peerConnectionRef.current = pc;
 
     // Polling can deliver ICE candidates before the SDP offer/answer. Keep them
