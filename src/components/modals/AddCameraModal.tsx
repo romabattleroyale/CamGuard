@@ -53,6 +53,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
   const [pin, setPin] = useState<string>('');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [pairingError, setPairingError] = useState<string>('');
+  const [pairingAttempt, setPairingAttempt] = useState(0);
   const [pairingUrl, setPairingUrl] = useState<string>('');
   const [phoneCamName, setPhoneCamName] = useState('Vecchio Telefono (Camera)');
   const [isPhoneConnected, setIsPhoneConnected] = useState(false);
@@ -159,7 +160,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
         signalingRef.current = null;
       }
     };
-  }, [selectedType, isOpen]);
+  }, [selectedType, isOpen, pairingAttempt]);
 
   if (!isOpen) return null;
 
@@ -581,6 +582,13 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                   <div role="alert" className="w-full rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">
                     <strong className="block mb-1">Collegamento non disponibile</strong>
                     {pairingError}
+                    <button
+                      type="button"
+                      onClick={() => setPairingAttempt((attempt) => attempt + 1)}
+                      className="mt-3 rounded-lg border border-rose-300/30 px-3 py-2 text-xs font-bold text-rose-100 hover:bg-rose-400/10"
+                    >
+                      Riprova collegamento
+                    </button>
                   </div>
                 )}
 
