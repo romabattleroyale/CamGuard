@@ -174,7 +174,7 @@ export default function App() {
       const data = await response.json();
       if (!data.sessionId || !data.pin) throw new Error('Il server non ha restituito sessione e PIN.');
       const session = String(data.sessionId), code = String(data.pin);
-      const url = `${window.location.origin}${window.location.pathname}#camera&session=${encodeURIComponent(session)}&pin=${encodeURIComponent(code)}`;
+      const url = `${getSignalingBaseUrl()}/#camera&session=${encodeURIComponent(session)}&pin=${encodeURIComponent(code)}`;
       const qr = await generateQrDataUrl(url);
       setPairingSessionId(session); setPairingPin(code); setPairingQr(qr); setPairingCopied(false);
     } catch (error) {
@@ -183,7 +183,7 @@ export default function App() {
   };
   const openPhoneCameraPairing = () => { setPairingOpen(true); if (!pairingSessionId) void createPhoneCameraPairing(); };
   const copyPhonePairingLink = async () => {
-    const url = `${window.location.origin}${window.location.pathname}#camera&session=${encodeURIComponent(pairingSessionId)}&pin=${encodeURIComponent(pairingPin)}`;
+    const url = `${getSignalingBaseUrl()}/#camera&session=${encodeURIComponent(pairingSessionId)}&pin=${encodeURIComponent(pairingPin)}`;
     try { await navigator.clipboard.writeText(url); setPairingCopied(true); }
     catch { setPairingError('Copia automatica non disponibile: usa il QR oppure inserisci sessione e PIN manualmente.'); }
   };
