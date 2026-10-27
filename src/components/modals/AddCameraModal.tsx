@@ -394,7 +394,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                     value={ipName}
                     onChange={(e) => setIpName(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-[#0B0F14] border border-[#1F2933] rounded-xl text-sm text-white focus:outline-none focus:border-[#4FC3F7] transition-colors"
-                    placeholder="Es. Salotto Tapo C200"
+                    placeholder="Nome reale della telecamera"
                   />
                 </motion.div>
 
@@ -410,7 +410,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                       value={ipAddress}
                       onChange={(e) => setIpAddress(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-[#0B0F14] border border-[#1F2933] rounded-xl text-sm text-white font-mono focus:outline-none focus:border-[#4FC3F7]"
-                      placeholder="192.168.1.100"
+                      placeholder="Indirizzo IP della telecamera"
                     />
                   </div>
                   <div>
@@ -465,27 +465,17 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                     value={ipStreamPath}
                     onChange={(e) => setIpStreamPath(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-[#0B0F14] border border-[#1F2933] rounded-xl text-sm text-white font-mono focus:outline-none focus:border-[#4FC3F7]"
-                    placeholder="/stream1"
+                    placeholder="Percorso RTSP dichiarato dal produttore"
                   />
                   <p className="text-[11px] text-[#64748B] mt-1 font-mono">
                     Tapo: /stream1 • EZVIZ: /h264Preview_01_main
                   </p>
                 </motion.div>
 
-                {/* Simulation checkbox */}
-                <motion.div variants={itemVariants}>
-                  <label className="flex items-center gap-3 p-3.5 rounded-2xl bg-[#1C242E]/70 border border-[#1F2933] cursor-pointer hover:border-[#2D3A47] transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={ipSimulateTest}
-                      onChange={(e) => setIpSimulateTest(e.target.checked)}
-                      className="w-4 h-4 rounded text-[#4FC3F7] bg-[#0B0F14] border-[#1F2933]"
-                    />
-                    <div className="text-xs">
-                      <span className="font-bold text-white">Abilita feed di test simulato con OSD</span>
-                      <p className="text-[#94A3B8]">Genera feed live con telemetria e controlli PTZ Pan/Tilt</p>
-                    </div>
-                  </label>
+                <motion.div variants={itemVariants} className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-100">
+                  <p className="font-bold">Connessione RTSP non ancora disponibile</p>
+                  <p className="mt-1">Questa versione non dispone ancora del relay video necessario a visualizzare flussi RTSP. Non verrà creata una telecamera demo o dichiarata online senza verifica reale.</p>
+                  <p className="mt-2">{ipTestMessage}</p>
                 </motion.div>
 
                 {/* Shimmer Submit Button */}
@@ -499,9 +489,11 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                   </button>
                   <button
                     type="submit"
-                    className="animate-shimmer px-6 py-2.5 bg-gradient-to-r from-[#4FC3F7] to-[#38BDF8] text-black font-extrabold rounded-xl text-xs tracking-wider uppercase transition-all shadow-lg shadow-[#4FC3F7]/25 active:scale-95"
+                    disabled
+                    className="px-6 py-2.5 bg-[#475569] text-slate-200 font-extrabold rounded-xl text-xs tracking-wider uppercase cursor-not-allowed opacity-70"
+                    title="Disponibile quando sarà configurato il relay RTSP/ONVIF"
                   >
-                    Aggiungi Telecamera IP
+                    RTSP non ancora disponibile
                   </button>
                 </motion.div>
               </motion.div>
