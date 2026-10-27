@@ -19,6 +19,7 @@ export type MessageCallback = (msg: SignalingMessage) => void;
 export class SignalingClient {
   private sessionId: string;
   private role: 'viewer' | 'camera';
+  private pin: string;
   private broadcastChannel: BroadcastChannel | null = null;
   private pollInterval: any = null;
   private lastTimestamp: number = 0;
@@ -26,9 +27,10 @@ export class SignalingClient {
   private processedMessageIds = new Set<string>();
   private isDestroyed = false;
 
-  constructor(sessionId: string, role: 'viewer' | 'camera') {
+  constructor(sessionId: string, role: 'viewer' | 'camera', pin = '') {
     this.sessionId = sessionId;
     this.role = role;
+    this.pin = pin;
 
     // 1. Setup BroadcastChannel for instant local tab testing
     try {
@@ -100,16 +102,18 @@ export class SignalingClient {
 
     // Send to LAN server
     try {
-      await apiFetch(`/api/signaling/${this.sessionId}/message`, {
+      const res = await apiFetch(`/api/signaling/${encodeURIComponent(this.sessionId)}/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: msg.id,
+          pin: this.pin,
           sender: this.role,
           type,
           payload,
         }),
       });
+      if (!res.ok) return false;
       return true;
     } catch (err) {
       // In purely offline mock/same tab, server fetch might fail or return error, which is fine
@@ -122,7 +126,7 @@ export class SignalingClient {
       if (this.isDestroyed) return;
       try {
         const res = await apiFetch(
-          `/api/signaling/${this.sessionId}/messages?role=${this.role}&since=${Math.max(0, this.lastTimestamp - 1)}`
+          `/api/signaling/${encodeURIComponent(this.sessionId)}/messages?role=${this.role}&pin=${encodeURIComponent(this.pin)}&since=${Math.max(0, this.lastTimestamp - 1)}`
         );
         if (res.ok) {
           const data = await res.json();
