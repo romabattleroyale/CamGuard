@@ -16,7 +16,7 @@
 - Do not commit secrets, camera passwords, signing keys or API credentials.
 
 ## Build verification
-- Use a committed lockfile and `npm ci` where possible.
+- Generate and commit a complete lockfile with npm in an environment that can resolve dependencies before switching CI to `npm ci`; never use a hand-written partial lockfile.
 - Run `npm run lint` and `npm run build` before packaging.
 - Verify the manifest contains CAMERA and RECORD_AUDIO after Capacitor sync and before Gradle build.
 - Ensure Codemagic selects Java 21 and print `java -version`.
