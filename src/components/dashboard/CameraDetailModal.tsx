@@ -311,18 +311,8 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
     }
   };
 
-  // Resolve room image
-  const getRoomImage = () => {
-    if (camera.coverImage) return camera.coverImage;
-    const nameLower = camera.name.toLowerCase();
-    if (nameLower.includes('salotto') || nameLower.includes('living')) return ASSETS.roomLivingRoom;
-    if (nameLower.includes('giardino') || nameLower.includes('patio')) return ASSETS.roomGardenPatio;
-    if (nameLower.includes('garage')) return ASSETS.roomModernGarage;
-    if (nameLower.includes('ingresso') || nameLower.includes('hallway')) return ASSETS.roomHallwayEntrance;
-    return ASSETS.dashboardInteriorNight;
-  };
+  const isRealPhoneStream = camera.type === 'phone' && Boolean(videoRef.current?.srcObject);
 
-  const roomImage = getRoomImage();
 
   return (
     <motion.div
@@ -374,9 +364,9 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
               </div>
             )}
 
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#FF6577]/20 text-[#FF6577] border border-[#FF6577]/35 flex items-center gap-1 shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#FF6577] animate-ping" />
-              LIVE
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border flex items-center gap-1 shrink-0 ${isRealPhoneStream ? 'bg-[#45D7B0]/20 text-[#45D7B0] border-[#45D7B0]/35' : 'bg-[#FF6577]/20 text-[#FF6577] border-[#FF6577]/35'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isRealPhoneStream ? 'bg-[#45D7B0] animate-pulse' : 'bg-[#FF6577]'}`} />
+              {isRealPhoneStream ? 'FLUSSO RICEVUTO' : camera.type === 'ip' ? 'RTSP NON COLLEGATO' : 'IN ATTESA DEL VIDEO'}
             </span>
           </div>
         </div>
@@ -403,13 +393,10 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
               playsInline
             />
           ) : (
-            <div className="w-full h-full relative overflow-hidden">
-              <img
-                src={roomImage}
-                alt={camera.name}
-                className="w-full h-full object-cover object-center brightness-95"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/30 pointer-events-none" />
+            <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-[#080E18] text-center p-6">
+              <Camera className="w-10 h-10 text-[#64748B]" />
+              <p className="text-sm font-bold text-white">Flusso RTSP/ONVIF non disponibile</p>
+              <p className="text-xs text-[#99B0CA] max-w-sm">Questa versione non può riprodurre direttamente RTSP. Non viene mostrata un'immagine sostitutiva come se fosse il video reale.</p>
             </div>
           )}
 
