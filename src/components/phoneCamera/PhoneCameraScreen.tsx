@@ -127,7 +127,7 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
           },
           audio: false,
         });
-        setPermissionError('Fotocamera attiva, ma il microfono non è disponibile. Verifica il permesso microfono per abilitare l’audio.');
+        console.warn('Fotocamera attiva senza microfono; le funzioni audio bidirezionali restano disabilitate.');
       }
 
       localStreamRef.current = stream;
