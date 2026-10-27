@@ -13,9 +13,6 @@ import {
   Volume2,
   ShieldAlert,
   AlertTriangle,
-  QrCode,
-  Copy,
-  Check,
   X,
   Share2
 } from 'lucide-react';
@@ -23,8 +20,7 @@ import { SignalingClient, createPeerConnectionConfig } from '../../services/webr
 import { playSirenSound, stopSirenSound, playChimeSound } from '../../utils/audio';
 import { MotionDetector } from '../../utils/motion';
 import { WakeLockManager, getBatteryStatus } from '../../utils/device';
-import { generateQrDataUrl } from '../../utils/qr';
-import { apiFetch, getSignalingBaseUrl } from '../../services/api';
+import { apiFetch } from '../../services/api';
 
 interface PhoneCameraScreenProps {
   initialSessionId?: string;
@@ -41,9 +37,6 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
   const [deviceName, setDeviceName] = useState<string>('CamGest Telefono');
   const [sessionId, setSessionId] = useState<string>(initialSessionId || '');
   const [pin, setPin] = useState<string>(initialPin || '');
-  const [qrModalOpen, setQrModalOpen] = useState(false);
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const [copiedLink, setCopiedLink] = useState(false);
   const [manualJoinRequested, setManualJoinRequested] = useState(false);
   const [manualJoinError, setManualJoinError] = useState('');
 
@@ -232,12 +225,6 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
           setPermissionError('Sessione creata ma fotocamera non attiva. Controlla i permessi e riprova.');
           return;
         }
-
-        // Generate pairing QR data URL
-        const pairUrl = `${getSignalingBaseUrl()}/#camera&session=${encodeURIComponent(activeSessionId)}&pin=${encodeURIComponent(activePin || '')}`;
-        generateQrDataUrl(pairUrl).then((url) => {
-          if (isMounted) setQrDataUrl(url);
-        });
 
         // Initialize WebRTC and Signaling
         const signaling = new SignalingClient(activeSessionId, 'camera', activePin || pin);
@@ -444,50 +431,6 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
     stopSirenSound();
     onExit();
   };
-
-  // Copy connection pairing link
-  const copyLink = async () => {
-    const pairUrl = `${getSignalingBaseUrl()}/#viewer&session=${encodeURIComponent(sessionId)}&pin=${encodeURIComponent(pin)}`;
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(pairUrl);
-      } else {
-        const input = document.createElement('textarea');
-        input.value = pairUrl;
-        input.setAttribute('readonly', '');
-        input.style.position = 'fixed';
-        input.style.opacity = '0';
-        document.body.appendChild(input);
-        input.select();
-        const copied = document.execCommand('copy');
-        input.remove();
-        if (!copied) throw new Error('Copia non supportata dal dispositivo');
-      }
-      setCopiedLink(true);
-      window.setTimeout(() => setCopiedLink(false), 2000);
-    } catch (error) {
-      console.error('Impossibile copiare il link di abbinamento', error);
-      setCopiedLink(false);
-    }
-  };
-
-  if (!initialSessionId && !manualJoinRequested) {
-    return (
-      <main className="min-h-screen bg-[#080E18] text-white flex flex-col">
-        <header className="flex items-center gap-3 p-4 border-b border-white/10">
-          <button onClick={onExit} className="p-2 rounded-xl bg-white/5" aria-label="Torna indietro"><ArrowLeft size={20} /></button>
-          <div><h1 className="font-bold text-lg">Usa come fotocamera</h1><p className="text-xs text-slate-400">Associa al Centro di controllo</p></div>
-        </header>
-        <section className="p-5 flex-1 flex flex-col justify-center gap-5 max-w-md w-full mx-auto">
-          <div className="rounded-2xl border border-sky-400/25 bg-sky-400/10 p-4"><h2 className="font-extrabold text-lg">Collega questa fotocamera</h2><p className="text-sm text-slate-300 mt-2">Scansiona il QR mostrato nel Centro di controllo per compilare automaticamente i dati. Se non vuoi usare il QR, inserisci qui sotto il codice sessione e il PIN del Centro di controllo.</p></div>
-          <label className="block text-sm text-slate-300">Codice sessione<input value={sessionId} onChange={(e) => setSessionId(e.target.value)} autoCapitalize="none" autoCorrect="off" placeholder="Codice mostrato nel Centro di controllo" className="mt-2 w-full rounded-xl bg-[#050A12] border border-white/15 px-3 py-3 text-white outline-none focus:border-sky-400" /></label>
-          <label className="block text-sm text-slate-300">PIN del Centro di controllo<input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="PIN a 6 cifre" className="mt-2 w-full rounded-xl bg-[#050A12] border border-white/15 px-3 py-3 text-white tracking-[0.25em] outline-none focus:border-sky-400" /></label>
-          {manualJoinError && <p role="alert" className="rounded-xl bg-rose-500/10 border border-rose-400/20 p-3 text-sm text-rose-200">{manualJoinError}</p>}
-          <button onClick={() => { if (!sessionId.trim() || !pin.trim()) { setManualJoinError('Inserisci entrambi i codici mostrati nel Centro di controllo.'); return; } setManualJoinError(''); setManualJoinRequested(true); }} className="w-full rounded-xl bg-sky-400 text-[#06111D] font-extrabold py-3">Collega e avvia la fotocamera</button>
-        </section>
-      </main>
-    );
-  }
 
   // -------------------------------------------------------------
   // BLACK SCREEN (Foreground Service Energy Saver)
@@ -720,70 +663,6 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         </footer>
       </div>
 
-      {/* QR Code / Share Pairing Modal */}
-      <AnimatePresence>
-        {qrModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-[#0B0F14]/90 backdrop-blur-md flex items-center justify-center p-5"
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-[#141A21] border border-[#1F2933] p-6 rounded-[26px] max-w-sm w-full text-center space-y-4 shadow-2xl relative"
-            >
-              <button
-                onClick={() => setQrModalOpen(false)}
-                className="absolute top-4 right-4 p-1.5 text-[#94A3B8] hover:text-white rounded-xl hover:bg-[#1C242E]"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <div className="w-10 h-10 rounded-2xl bg-[#4FC3F7]/12 text-[#4FC3F7] mx-auto flex items-center justify-center border border-[#4FC3F7]/25">
-                <QrCode className="w-5 h-5" />
-              </div>
-
-              <div>
-                <h3 className="text-base font-bold text-white tracking-tight">
-                  Collega telefono Viewer
-                </h3>
-                <p className="text-xs text-[#94A3B8] mt-1">
-                  Inquadra questo QR con l’altro dispositivo per visualizzare il feed.
-                </p>
-              </div>
-
-              <div className="p-3 bg-[#0B0F14] rounded-2xl border border-[#1F2933] inline-block shadow-inner">
-                {qrDataUrl ? (
-                  <img src={qrDataUrl} alt="QR Code" className="w-48 h-48 rounded-xl object-contain mx-auto" />
-                ) : (
-                  <div className="w-48 h-48 flex items-center justify-center text-[#64748B]">
-                    Generazione QR...
-                  </div>
-                )}
-              </div>
-
-              <div className="pt-1 space-y-2">
-                <div className="rounded-xl bg-[#0B0F14] border border-[#1F2933] p-3 space-y-1">
-                  <div className="text-[10px] uppercase tracking-widest text-[#94A3B8]">Codice sessione per inserimento manuale</div>
-                  <div className="text-xs font-mono text-white break-all select-all">{sessionId || 'Creazione sessione...'}</div>
-                  <div className="text-xs font-mono text-[#4FC3F7] font-bold">PIN di connessione: {pin || '------'}</div>
-                </div>
-
-                <button
-                  onClick={copyLink}
-                  className="w-full py-2.5 px-4 bg-[#1C242E] hover:bg-[#242F3B] text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border border-[#1F2933] transition-all"
-                >
-                  {copiedLink ? <Check className="w-4 h-4 text-[#34D399]" /> : <Copy className="w-4 h-4" />}
-                  <span>{copiedLink ? 'Link Copiato!' : 'Copia link di accoppiamento'}</span>
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };
