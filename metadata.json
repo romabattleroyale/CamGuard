@@ -1,0 +1,6 @@
+{
+  "name": "CamGuard - Telecamere IP & PhoneCam",
+  "description": "Sistema di videosorveglianza locale per telecamere IP RTSP e riuso di vecchi smartphone come telecamere con WebRTC e trasmissione LAN.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
