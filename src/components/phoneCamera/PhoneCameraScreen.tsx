@@ -24,7 +24,7 @@ import { playSirenSound, stopSirenSound, playChimeSound } from '../../utils/audi
 import { MotionDetector } from '../../utils/motion';
 import { WakeLockManager, getBatteryStatus } from '../../utils/device';
 import { generateQrDataUrl } from '../../utils/qr';
-import { apiFetch } from '../../services/api';
+import { apiFetch, getSignalingBaseUrl } from '../../services/api';
 
 interface PhoneCameraScreenProps {
   initialSessionId?: string;
@@ -240,7 +240,7 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
         }
 
         // Generate pairing QR data URL
-        const pairUrl = `${window.location.origin}/#camera&session=${activeSessionId}&pin=${activePin}`;
+        const pairUrl = `${getSignalingBaseUrl()}/#camera&session=${encodeURIComponent(activeSessionId)}&pin=${encodeURIComponent(activePin || '')}`;
         generateQrDataUrl(pairUrl).then((url) => {
           if (isMounted) setQrDataUrl(url);
         });
@@ -453,7 +453,7 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
 
   // Copy connection pairing link
   const copyLink = async () => {
-    const pairUrl = `${window.location.origin}/#camera&session=${encodeURIComponent(sessionId)}&pin=${encodeURIComponent(pin)}`;
+    const pairUrl = `${getSignalingBaseUrl()}/#camera&session=${encodeURIComponent(sessionId)}&pin=${encodeURIComponent(pin)}`;
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(pairUrl);
