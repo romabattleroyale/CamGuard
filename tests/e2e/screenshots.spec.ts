@@ -33,8 +33,6 @@ test('camera mode opens and captures screenshot', async ({ page }, testInfo) => 
     animations: 'disabled',
   });
   await expect(page.getByText('FOTOCAMERA ATTIVA', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: /La tua casa, sotto controllo/i })).toBeVisible();
-  await expect(page.getByText('Collega una telecamera telefono')).toBeVisible();
   await expect(page.locator('#root')).not.toBeEmpty();
 });
 
@@ -47,6 +45,8 @@ test('control center opens and captures screenshot', async ({ page }, testInfo) 
     fullPage: true,
     animations: 'disabled',
   });
+  await expect(page.getByRole('heading', { name: /La tua casa, sotto controllo/i })).toBeVisible();
+  await expect(page.getByText('Collega una telecamera telefono')).toBeVisible();
   await expect(page.locator('#root')).not.toBeEmpty();
 });
 
