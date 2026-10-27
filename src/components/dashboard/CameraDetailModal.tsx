@@ -221,9 +221,44 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
   };
 
   const takeSnapshot = () => {
-    playChimeSound();
-    setSnapshotFeedback(true);
-    setTimeout(() => setSnapshotFeedback(false), 2400);
+    const video = videoRef.current;
+    if (camera.type !== 'phone' || !video || !video.srcObject || video.readyState < 2) {
+      console.warn('Snapshot unavailable: no live video frame is available.');
+      return;
+    }
+
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+    if (!width || !height) {
+      console.warn('Snapshot unavailable: video dimensions are not ready.');
+      return;
+    }
+
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Canvas 2D context is unavailable');
+      context.drawImage(video, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          console.warn('Unable to encode snapshot image.');
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `camguard-snapshot-${camera.id}-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        playChimeSound();
+        setSnapshotFeedback(true);
+        window.setTimeout(() => setSnapshotFeedback(false), 2400);
+      }, 'image/jpeg', 0.92);
+    } catch (error) {
+      console.error('Unable to capture snapshot', error);
+    }
   };
 
   const saveName = () => {
