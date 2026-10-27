@@ -80,8 +80,11 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
     signalingRef.current = signaling;
 
     const pc = new RTCPeerConnection(createPeerConnectionConfig());
-    // Explicitly request incoming video before applying the phone's offer.
+    // Match the phone offer's media order (video, then audio).
+    // Keep the audio m-line negotiated from the start so Talk never needs
+    // to create a competing offer against the phone's initial offer.
     pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.addTransceiver('audio', { direction: 'sendrecv' });
     peerConnectionRef.current = pc;
 
     // Polling can deliver ICE candidates before the SDP offer/answer. Keep them
@@ -286,16 +289,16 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
       if (!audioTrack) throw new Error('Traccia microfono non disponibile.');
 
       const pc = peerConnectionRef.current;
-      const existingSender = pc.getSenders().find((sender) => sender.track?.kind === 'audio');
-      if (existingSender) {
-        await existingSender.replaceTrack(audioTrack);
-      } else {
-        pc.addTrack(audioTrack, micStream);
-        // Adding a new track requires SDP renegotiation; a command alone is not sufficient.
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        await signalingRef.current?.sendMessage('offer', offer);
+      // The audio transceiver was negotiated with the initial video offer.
+      // Its sender.track is null until Talk is pressed, so find it through
+      // the transceiver rather than getSenders().find(track.kind === 'audio').
+      const audioTransceiver = pc.getTransceivers().find(
+        (transceiver) => transceiver.receiver.track.kind === 'audio'
+      );
+      if (!audioTransceiver) {
+        throw new Error('Canale audio non negoziato. Chiudi e riapri la telecamera.');
       }
+      await audioTransceiver.sender.replaceTrack(audioTrack);
 
       await signalingRef.current?.sendMessage('command', { command: 'intercom_start' });
       setIsIntercomActive(true);
@@ -313,6 +316,16 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
     if (micStreamRef.current) {
       micStreamRef.current.getTracks().forEach((t) => t.stop());
       micStreamRef.current = null;
+    }
+    // Keep the negotiated audio channel but stop sending microphone samples.
+    const pc = peerConnectionRef.current;
+    const audioTransceiver = pc?.getTransceivers().find(
+      (transceiver) => transceiver.receiver.track.kind === 'audio'
+    );
+    if (audioTransceiver) {
+      void audioTransceiver.sender.replaceTrack(null).catch((error) => {
+        console.warn('Impossibile disattivare la traccia del microfono', error);
+      });
     }
     if (signalingRef.current) {
       signalingRef.current.sendMessage('command', { command: 'intercom_stop' });
