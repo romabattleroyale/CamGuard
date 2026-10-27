@@ -50,6 +50,7 @@ import { WelcomeScreen } from './components/welcome/WelcomeScreen';
 import { DailyRecapModal } from './components/dashboard/DailyRecapModal';
 import { playChimeSound, playSirenSound, stopSirenSound } from './utils/audio';
 import { ASSETS } from './assets/images';
+import { apiFetch } from './services/api';
 
 const STORAGE_KEY = 'camguard_saved_cameras_v2';
 const FAVORITES_KEY = 'camguard_favorite_cameras_v1';
@@ -316,7 +317,7 @@ export default function App() {
     setServerCheckStatus('checking');
     setServerCheckMessage('Verifica della connessione...');
     try {
-      const response = await fetch(`${baseUrl}/api/lan-info`, { method: 'GET' });
+      const response = await apiFetch('/api/lan-info');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const info = await response.json();
       setServerCheckStatus('online');
@@ -416,7 +417,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetch('/api/lan-info')
+    apiFetch('/api/lan-info')
       .then((res) => res.json())
       .then((data) => {
         if (data) {
