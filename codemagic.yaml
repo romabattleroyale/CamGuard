@@ -6,7 +6,7 @@ workflows:
     environment:
       vars:
         PACKAGE_NAME: "com.romabattleroyale.camguard"
-      node: 22
+      node: v22.11.0
     scripts:
       - name: Install project dependencies
         script: |
