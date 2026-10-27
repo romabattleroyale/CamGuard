@@ -15,7 +15,8 @@ import {
   ShieldCheck,
   Lock,
   Server,
-  Layers
+  Layers,
+  AlertTriangle
 } from 'lucide-react';
 import { CameraDevice } from '../../types/camera';
 import { generateQrDataUrl } from '../../utils/qr';
@@ -592,6 +593,11 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                         alt="QR Code accoppiamento telefono"
                         className="w-44 h-44 rounded-xl object-contain"
                       />
+                    ) : pairingError ? (
+                      <div className="w-44 h-44 flex flex-col items-center justify-center gap-2 text-[#FCA5A5] text-center px-4">
+                        <AlertTriangle className="w-8 h-8" />
+                        <span className="text-xs font-semibold">QR non disponibile</span>
+                      </div>
                     ) : (
                       <div className="w-44 h-44 flex items-center justify-center text-[#64748B]">
                         <span className="w-6 h-6 border-2 border-[#4FC3F7] border-t-transparent rounded-full animate-spin" />
