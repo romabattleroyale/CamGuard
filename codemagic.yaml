@@ -1,0 +1,39 @@
+workflows:
+  camguard-android-debug:
+    name: CamGuard Android APK (debug)
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      vars:
+        PACKAGE_NAME: "com.romabattleroyale.camguard"
+      node: 22
+    scripts:
+      - name: Install project dependencies
+        script: |
+          npm install
+      - name: Install Capacitor Android tooling
+        script: |
+          npm install @capacitor/core@^8 @capacitor/cli@^8 @capacitor/android@^8
+      - name: Build CamGuard web app
+        script: |
+          npm run build
+      - name: Generate Android project if missing
+        script: |
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
+      - name: Sync web assets to Android
+        script: |
+          npx cap sync android
+      - name: Configure Android SDK
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > "$CM_BUILD_DIR/android/local.properties"
+      - name: Build debug APK
+        script: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+    artifacts:
+      - android/app/build/outputs/apk/debug/app-debug.apk
+      - android/app/build/outputs/**/*.apk
+      - /tmp/xcodebuild_logs/*.log
