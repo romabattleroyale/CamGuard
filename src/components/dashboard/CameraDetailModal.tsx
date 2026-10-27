@@ -652,7 +652,6 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
       micStreamRef.current = null;
     }
     // Keep the negotiated audio channel but stop sending microphone samples.
-    const pc = peerConnectionRef.current;
     const audioTransceiver = pc?.getTransceivers().find(
       (transceiver) => transceiver.receiver.track.kind === 'audio'
     );
