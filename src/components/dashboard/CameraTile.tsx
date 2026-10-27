@@ -30,6 +30,7 @@ import { CameraDevice } from '../../types/camera';
 import { SignalingClient, createPeerConnectionConfig } from '../../services/webrtc';
 import { playChimeSound } from '../../utils/audio';
 import { ASSETS } from '../../assets/images';
+import { apiFetch } from '../../services/api';
 
 interface CameraTileProps {
   camera: CameraDevice;
@@ -180,7 +181,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
 
     try {
       if (camera.type === 'phone' && camera.sessionId) {
-        const response = await fetch(
+        const response = await apiFetch(
           `/api/signaling/${encodeURIComponent(camera.sessionId)}/messages?role=viewer&since=${Date.now() - 15000}`
         );
         if (!response.ok) {
