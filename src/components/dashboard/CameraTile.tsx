@@ -56,7 +56,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
   onReconnect,
 }) => {
   const isOnline = camera.status === 'online';
-  const [isLive, setIsLive] = useState(isOnline);
+  const [isLive, setIsLive] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [batteryLevel, setBatteryLevel] = useState<number | undefined>(camera.batteryLevel);
   const [isCharging, setIsCharging] = useState<boolean | undefined>(camera.isCharging);
@@ -64,7 +64,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
   const [motionAlert, setMotionAlert] = useState<boolean>(false);
   const [isIntercomActive, setIsIntercomActive] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [lastActivity, setLastActivity] = useState<string>(isOnline ? 'In tempo reale' : '15 min fa');
+  const [lastActivity, setLastActivity] = useState<string>('Nessuna attività registrata');
 
   // Indoor vs outdoor designation (default true if indoor not explicitly false)
   const isIndoor = camera.isIndoor !== false;
@@ -78,15 +78,19 @@ export const CameraTile: React.FC<CameraTileProps> = ({
 
   // Sync state with camera.status prop
   useEffect(() => {
-    setIsLive(camera.status === 'online');
-    if (camera.status === 'online') {
-      setLastActivity('In tempo reale');
-    }
+    // Persisted status is not proof that a stream is currently live.
+    setIsLive(false);
+    setLastActivity('Verifica connessione in corso');
   }, [camera.status]);
 
   // WebRTC Setup for Phone Camera
   useEffect(() => {
-    if (camera.type !== 'phone' || !camera.sessionId || !isOnline) return;
+    if (camera.type !== 'phone' || !camera.sessionId) {
+      setIsLive(false);
+      return;
+    }
+
+    setIsLive(false);
 
     let isSubscribed = true;
     const signaling = new SignalingClient(camera.sessionId, 'viewer', camera.pin || '');
@@ -100,7 +104,8 @@ export const CameraTile: React.FC<CameraTileProps> = ({
         videoRef.current.srcObject = event.streams[0];
         videoRef.current.play().catch(console.warn);
         setIsLive(true);
-        onUpdate({ ...camera, status: 'online' });
+        setLastActivity('Flusso video ricevuto');
+        onUpdate({ ...camera, status: 'online', lastSeen: Date.now() });
       }
     };
 
@@ -113,11 +118,16 @@ export const CameraTile: React.FC<CameraTileProps> = ({
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') {
         setIsLive(true);
+        setLastActivity('Flusso WebRTC collegato');
+        onUpdate({ ...camera, status: 'online', lastSeen: Date.now() });
       } else if (
         pc.connectionState === 'disconnected' ||
-        pc.connectionState === 'failed'
+        pc.connectionState === 'failed' ||
+        pc.connectionState === 'closed'
       ) {
         setIsLive(false);
+        setLastActivity('Flusso non disponibile');
+        onUpdate({ ...camera, status: 'offline', lastSeen: Date.now() });
       }
     };
 
@@ -130,14 +140,14 @@ export const CameraTile: React.FC<CameraTileProps> = ({
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           await signaling.sendMessage('answer', answer);
-          setIsLive(true);
+          // Do not report live until the WebRTC connection delivers actual media.
         } catch (err) {
           console.error('Failed to handle offer', err);
         }
       } else if (msg.type === 'answer') {
         try {
           await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
-          setIsLive(true);
+          // An SDP answer is not proof that the media track is flowing.
         } catch (err) {
           console.error('Failed to handle answer', err);
         }
@@ -159,9 +169,11 @@ export const CameraTile: React.FC<CameraTileProps> = ({
             setTimeout(() => setMotionAlert(false), 2500);
           }
         }
-        setIsLive(true);
+        // Status messages update telemetry only, not live-stream status.
       } else if (msg.type === 'disconnect') {
         setIsLive(false);
+        setLastActivity('Telefono disconnesso');
+        onUpdate({ ...camera, status: 'offline', lastSeen: Date.now() });
       }
     });
 
@@ -173,7 +185,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
         localMicStreamRef.current.getTracks().forEach((t) => t.stop());
       }
     };
-  }, [camera.sessionId, camera.type, isOnline]);
+  }, [camera.sessionId, camera.type]);
 
   const handleManualReconnect = async (e: React.MouseEvent) => {
     e.stopPropagation();
