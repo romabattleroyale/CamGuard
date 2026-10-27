@@ -24,6 +24,7 @@ import { playSirenSound, stopSirenSound, playChimeSound } from '../../utils/audi
 import { MotionDetector } from '../../utils/motion';
 import { WakeLockManager, getBatteryStatus } from '../../utils/device';
 import { generateQrDataUrl } from '../../utils/qr';
+import { apiFetch } from '../../services/api';
 
 interface PhoneCameraScreenProps {
   initialSessionId?: string;
@@ -212,7 +213,7 @@ export const PhoneCameraScreen: React.FC<PhoneCameraScreenProps> = ({
 
         if (!activeSessionId) {
           // Create session as Camera node
-          const res = await fetch('/api/signaling/create', {
+          const res = await apiFetch('/api/signaling/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name: deviceName }),
