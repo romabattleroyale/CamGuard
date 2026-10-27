@@ -1,0 +1,8 @@
+{
+  "appId": "com.romabattleroyale.camguard",
+  "appName": "CamGuard",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
