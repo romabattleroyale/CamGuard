@@ -216,18 +216,39 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
 
   const handleStartIntercom = async () => {
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Microfono non disponibile in questa WebView.');
+      }
+      if (!peerConnectionRef.current || peerConnectionRef.current.signalingState === 'closed') {
+        throw new Error('Connessione video non attiva.');
+      }
+
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       micStreamRef.current = micStream;
-      if (peerConnectionRef.current) {
-        const audioTrack = micStream.getAudioTracks()[0];
-        peerConnectionRef.current.addTrack(audioTrack, micStream);
+      const audioTrack = micStream.getAudioTracks()[0];
+      if (!audioTrack) throw new Error('Traccia microfono non disponibile.');
+
+      const pc = peerConnectionRef.current;
+      const existingSender = pc.getSenders().find((sender) => sender.track?.kind === 'audio');
+      if (existingSender) {
+        await existingSender.replaceTrack(audioTrack);
+      } else {
+        pc.addTrack(audioTrack, micStream);
+        // Adding a new track requires SDP renegotiation; a command alone is not sufficient.
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await signalingRef.current?.sendMessage('offer', offer);
       }
-      if (signalingRef.current) {
-        signalingRef.current.sendMessage('command', { command: 'intercom_start' });
-      }
+
+      await signalingRef.current?.sendMessage('command', { command: 'intercom_start' });
       setIsIntercomActive(true);
     } catch (err) {
-      console.warn('Intercom microphone error', err);
+      console.error('Intercom microphone error', err);
+      setIsIntercomActive(false);
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach((track) => track.stop());
+        micStreamRef.current = null;
+      }
     }
   };
 
