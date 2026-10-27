@@ -20,6 +20,7 @@ import {
 import { CameraDevice } from '../../types/camera';
 import { generateQrDataUrl } from '../../utils/qr';
 import { SignalingClient } from '../../services/webrtc';
+import { apiFetch } from '../../services/api';
 
 interface AddCameraModalProps {
   isOpen: boolean;
@@ -88,7 +89,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
 
     async function initPhoneSession() {
       try {
-        const lanRes = await fetch('/api/lan-info');
+        const lanRes = await apiFetch('/api/lan-info');
         let hostUrl = window.location.origin;
         if (lanRes.ok) {
           const lanData = await lanRes.json();
@@ -98,7 +99,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
           }
         }
 
-        const createRes = await fetch('/api/signaling/create', {
+        const createRes = await apiFetch('/api/signaling/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: phoneCamName }),
