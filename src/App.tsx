@@ -1180,7 +1180,7 @@ export default function App() {
           <DailyRecapModal
             isOpen={isRecapModalOpen}
             onClose={() => setIsRecapModalOpen(false)}
-            events={SAMPLE_EVENTS as any}
+            events={eventsList as any}
             cameras={cameras}
           />
         )}
