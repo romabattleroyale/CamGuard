@@ -92,6 +92,11 @@ export const CameraTile: React.FC<CameraTileProps> = ({
     }
 
     setIsLive(false);
+    // A persisted "online" flag is historical only. Until actual media arrives,
+    // report this phone camera as offline so the dashboard cannot imply a live feed.
+    if (camera.status !== 'offline') {
+      onUpdate({ ...camera, status: 'offline', lastSeen: Date.now() });
+    }
 
     let isSubscribed = true;
     const signaling = new SignalingClient(camera.sessionId, 'viewer', camera.pin || '');
