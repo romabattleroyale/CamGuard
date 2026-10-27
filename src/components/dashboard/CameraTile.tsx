@@ -116,14 +116,43 @@ export const CameraTile: React.FC<CameraTileProps> = ({
       }
     };
 
-    pc.ontrack = (event) => {
-      if (event.streams && event.streams[0] && videoRef.current) {
-        videoRef.current.srcObject = event.streams[0];
-        videoRef.current.play().catch(console.warn);
+    const remoteMediaStream = new MediaStream();
+    pc.ontrack = async (event) => {
+      // Some WebViews deliver a track event without event.streams[0].
+      // Build a stable remote stream from tracks instead of silently ignoring it.
+      const incomingStream = event.streams?.[0];
+      const track = event.track;
+      if (incomingStream) {
+        incomingStream.getTracks().forEach((incomingTrack) => {
+          if (!remoteMediaStream.getTracks().some((t) => t.id === incomingTrack.id)) {
+            remoteMediaStream.addTrack(incomingTrack);
+          }
+        });
+      } else if (!remoteMediaStream.getTracks().some((t) => t.id === track.id)) {
+        remoteMediaStream.addTrack(track);
+      }
+
+      const video = videoRef.current;
+      if (!video || track.kind !== 'video') return;
+      video.srcObject = incomingStream || remoteMediaStream;
+      try {
+        await video.play();
+      } catch (error) {
+        console.error('Riproduzione video remota bloccata', error);
+      }
+      const markVideoLive = () => {
+        if (video.videoWidth <= 0 || video.videoHeight <= 0) return;
         setIsLive(true);
         setLastActivity('Flusso video ricevuto');
         onUpdate({ ...camera, status: 'online', lastSeen: Date.now() });
+      };
+      if (track.muted) {
+        track.onunmute = markVideoLive;
+      } else {
+        markVideoLive();
       }
+      video.onloadeddata = markVideoLive;
+      video.onplaying = markVideoLive;
     };
 
     pc.onicecandidate = (event) => {
