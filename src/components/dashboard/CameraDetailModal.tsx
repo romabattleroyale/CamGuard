@@ -111,6 +111,11 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
 
       const video = videoRef.current;
       if (!video || track.kind !== 'video') return;
+      // Mobile Chrome/WebView may block autoplay of an unmuted remote stream.
+      // Start surveillance video muted; the user can enable audio separately.
+      video.muted = true;
+      video.playsInline = true;
+      video.autoplay = true;
       video.srcObject = incomingStream || remoteMediaStream;
       const markVideoReady = () => {
         if (video.videoWidth > 0 && video.videoHeight > 0) setIsBuffering(false);
@@ -443,6 +448,7 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
               className="w-full h-full object-contain"
               autoPlay
               playsInline
+              muted
             />
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-[#080E18] text-center p-6">
