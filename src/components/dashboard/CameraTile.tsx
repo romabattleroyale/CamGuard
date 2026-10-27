@@ -252,43 +252,7 @@ export const CameraTile: React.FC<CameraTileProps> = ({
     }
   };
 
-  // Hardware Brand & Model resolution
-  const brandDisplay = () => {
-    if (camera.type === 'phone') return 'Smartphone Node P2P';
-    switch (camera.brand) {
-      case 'tapo':
-        return camera.name.toLowerCase().includes('310') ? 'TP-Link Tapo C310' : 'TP-Link Tapo C200';
-      case 'ezviz':
-        return 'EZVIZ C6N Indoor';
-      case 'reolink':
-        return 'Reolink E1 Pro';
-      default:
-        return 'IP RTSP Camera';
-    }
-  };
-
-  // Resolve room cover image
-  const getRoomImage = () => {
-    if (camera.coverImage) return camera.coverImage;
-    const nameLower = camera.name.toLowerCase();
-    const idLower = camera.id.toLowerCase();
-    if (nameLower.includes('salotto') || idLower.includes('salotto') || nameLower.includes('living')) {
-      return ASSETS.roomLivingRoom;
-    }
-    if (nameLower.includes('giardino') || idLower.includes('giardino') || nameLower.includes('patio')) {
-      return ASSETS.roomGardenPatio;
-    }
-    if (nameLower.includes('garage') || idLower.includes('garage')) {
-      return ASSETS.roomModernGarage;
-    }
-    if (nameLower.includes('ingresso') || idLower.includes('ingresso') || nameLower.includes('hallway')) {
-      return ASSETS.roomHallwayEntrance;
-    }
-    return ASSETS.dashboardInteriorNight;
-  };
-
-  const roomImage = getRoomImage();
-
+  // No synthetic room imagery is used as a camera feed.
   return (
     <motion.div
       layout
@@ -334,27 +298,11 @@ export const CameraTile: React.FC<CameraTileProps> = ({
                 )}
               </>
             ) : (
-              <div className="w-full h-full relative overflow-hidden">
-                {/* Photorealistic room environment base image */}
-                <img
-                  src={roomImage}
-                  alt={camera.name}
-                  className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700 ease-out brightness-90"
-                  loading="lazy"
-                />
-
-                {/* Subtle CCTV digital surveillance vignette */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
-
-                {/* Explicitly identify placeholder feeds instead of implying a real live stream. */}
-                <div className="absolute bottom-2.5 left-2.5 z-10 font-mono text-[10px] text-white/90 bg-black/70 backdrop-blur-md px-2 py-1 rounded-md border border-white/10 flex items-center gap-2">
-                  {camera.isSimulated || camera.type === 'ip' ? (
-                    <span className="text-amber-300 font-bold">ANTEPRIMA DEMO · NON LIVE</span>
-                  ) : (
-                    <span className="text-[#45D7B0] font-bold">FLUSSO COLLEGATO</span>
-                  )}
-                  {camera.ip && <><span>•</span><span>{camera.ip}:{camera.port || 554}</span></>}
-                </div>
+              <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-[#080E18] p-4 text-center">
+                <Camera className="w-8 h-8 text-[#64748B]" />
+                <p className="text-xs font-bold text-white">Flusso video non disponibile</p>
+                <p className="text-[10px] text-[#99B0CA]">RTSP/ONVIF non ancora collegato a un relay compatibile</p>
+                {camera.ip && <span className="text-[10px] font-mono text-[#64748B]">{camera.ip}:{camera.port || 554}</span>}
               </div>
             )}
           </div>
