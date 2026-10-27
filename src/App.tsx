@@ -156,11 +156,11 @@ export default function App() {
 
   const currentHour = new Date().getHours();
 
-  const normalizeSignalingServerUrl = (value: string) => value.trim().replace(/\\/+$/, '');
+  const normalizeSignalingServerUrl = (value: string) => value.trim().replace(/\/+$/, '');
 
   const saveSignalingServerUrl = () => {
     const normalized = normalizeSignalingServerUrl(signalingServerUrl);
-    if (normalized && !/^https?:\\/\\//i.test(normalized)) {
+    if (normalized && !/^https?:\/\//i.test(normalized)) {
       setServerCheckStatus('error');
       setServerCheckMessage('Inserisci un indirizzo completo che inizi con https:// o http://.');
       return;
