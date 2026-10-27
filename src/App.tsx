@@ -46,6 +46,7 @@ import { CameraDetailModal } from './components/dashboard/CameraDetailModal';
 import { HouseMapTab } from './components/dashboard/HouseMapTab';
 import { AddCameraModal } from './components/modals/AddCameraModal';
 import { PhoneCameraScreen } from './components/phoneCamera/PhoneCameraScreen';
+import { PhoneCameraViewer } from './components/phoneCamera/PhoneCameraViewer';
 import { WelcomeScreen } from './components/welcome/WelcomeScreen';
 import { DailyRecapModal } from './components/dashboard/DailyRecapModal';
 import { playChimeSound, playSirenSound, stopSirenSound } from './utils/audio';
@@ -71,7 +72,7 @@ export interface SecurityEvent {
   roomImage: string;
 }
 
-export type NavDestination = 'welcome' | 'camera_mode' | 'control_center';
+export type NavDestination = 'welcome' | 'camera_mode' | 'viewer_mode' | 'control_center';
 
 export default function App() {
   const [currentDestination, setCurrentDestination] = useState<NavDestination>('welcome');
@@ -227,15 +228,17 @@ export default function App() {
   // Preserve pairing parameters from a QR link before clearing the URL hash.
   useEffect(() => {
     const hash = window.location.hash;
-    if (hash.startsWith('#camera')) {
-      const query = hash.slice('#camera'.length).replace(/^&/, '');
+    if (hash.startsWith('#camera') || hash.startsWith('#viewer')) {
+      const isViewer = hash.startsWith('#viewer');
+      const marker = isViewer ? '#viewer' : '#camera';
+      const query = hash.slice(marker.length).replace(/^&/, '');
       const params = new URLSearchParams(query);
       const sessionId = params.get('session');
       const pin = params.get('pin');
       if (sessionId) {
         setPairedSessionId(sessionId);
         setPairedPin(pin || undefined);
-        setCurrentDestination('camera_mode');
+        setCurrentDestination(isViewer ? 'viewer_mode' : 'camera_mode');
       }
     }
 
@@ -377,6 +380,7 @@ export default function App() {
     return (
       <WelcomeScreen
         onSelectCameraMode={() => navigateTo('camera_mode')}
+        onSelectViewerMode={() => navigateTo('viewer_mode')}
         onSelectControlCenter={() => navigateTo('control_center')}
       />
     );
@@ -385,6 +389,20 @@ export default function App() {
   if (currentDestination === 'camera_mode') {
     return (
       <PhoneCameraScreen
+        initialSessionId={pairedSessionId}
+        initialPin={pairedPin}
+        onExit={() => {
+          setPairedSessionId(undefined);
+          setPairedPin(undefined);
+          navigateTo('welcome');
+        }}
+      />
+    );
+  }
+
+  if (currentDestination === 'viewer_mode') {
+    return (
+      <PhoneCameraViewer
         initialSessionId={pairedSessionId}
         initialPin={pairedPin}
         onExit={() => {
