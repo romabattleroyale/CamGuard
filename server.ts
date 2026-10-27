@@ -170,6 +170,12 @@ app.post('/api/signaling/:sessionId/message', (req: Request, res: Response) => {
     return;
   }
 
+  const suppliedPin = typeof req.body?.pin === 'string' ? req.body.pin.trim() : '';
+  if (!suppliedPin || suppliedPin !== session.pin) {
+    res.status(403).json({ error: 'PIN di abbinamento non valido' });
+    return;
+  }
+
   session.lastPing = Date.now();
   const { sender, type, payload } = req.body ?? {};
   if (!isValidRole(sender) || typeof type !== 'string' || !allowedMessageTypes.has(type)) {
@@ -225,6 +231,12 @@ app.get('/api/signaling/:sessionId/messages', (req: Request, res: Response) => {
   const session = sessions.get(sessionId);
   if (!session) {
     res.status(404).json({ error: 'Sessione scaduta' });
+    return;
+  }
+
+  const suppliedPin = typeof req.query.pin === 'string' ? req.query.pin.trim() : '';
+  if (!suppliedPin || suppliedPin !== session.pin) {
+    res.status(403).json({ error: 'PIN di abbinamento non valido' });
     return;
   }
 
