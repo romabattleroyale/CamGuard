@@ -24,6 +24,25 @@ workflows:
           if [ ! -d android ]; then
             npx cap add android
           fi
+      - name: Add Android camera and microphone permissions
+        script: |
+          MANIFEST="$CM_BUILD_DIR/android/app/src/main/AndroidManifest.xml"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          permissions = [
+              '<uses-permission android:name="android.permission.CAMERA" />',
+              '<uses-permission android:name="android.permission.RECORD_AUDIO" />',
+              '<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />'
+          ]
+          anchor = "<application"
+          missing = [x for x in permissions if x not in s]
+          if missing:
+              s = s.replace(anchor, "\n    " + "\n    ".join(missing) + "\n\n    " + anchor, 1)
+              p.write_text(s)
+          print(p.read_text())
+          PY
       - name: Sync web app to Android
         script: |
           npx cap sync android
