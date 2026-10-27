@@ -82,40 +82,73 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
     const pc = new RTCPeerConnection(createPeerConnectionConfig());
     peerConnectionRef.current = pc;
 
+    // Polling can deliver ICE candidates before the SDP offer/answer. Keep them
+    // queued until the remote description is installed, otherwise WebRTC may
+    // silently lose the candidates and never deliver video to this detail view.
+    const pendingIceCandidates: RTCIceCandidateInit[] = [];
+    const flushPendingIceCandidates = async () => {
+      while (pendingIceCandidates.length > 0 && pc.remoteDescription) {
+        const candidate = pendingIceCandidates.shift();
+        if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    };
+
     pc.ontrack = (event) => {
-      if (event.streams && event.streams[0] && videoRef.current) {
-        videoRef.current.srcObject = event.streams[0];
-        videoRef.current.play().catch(console.warn);
+      const stream = event.streams?.[0];
+      const video = videoRef.current;
+      if (!stream || !video) return;
+
+      video.srcObject = stream;
+      void video.play().then(() => {
         setIsBuffering(false);
+      }).catch((error) => {
+        console.error('Impossibile riprodurre il flusso video ricevuto', error);
+        setIsBuffering(false);
+      });
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        console.error('Connessione video WebRTC non riuscita:', pc.connectionState);
+        setIsBuffering(true);
       }
     };
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        signaling.sendMessage('candidate', event.candidate);
+        void signaling.sendMessage('candidate', event.candidate);
       }
     };
 
     signaling.onMessage(async (msg) => {
-      if (msg.type === 'offer') {
-        await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        await signaling.sendMessage('answer', answer);
-        setIsBuffering(false);
-      } else if (msg.type === 'answer') {
-        if (pc.signalingState !== 'stable') {
+      try {
+        if (msg.type === 'offer') {
           await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+          await flushPendingIceCandidates();
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          await signaling.sendMessage('answer', answer);
+          // SDP accepted does not mean video is flowing: wait for ontrack/play.
+        } else if (msg.type === 'answer') {
+          if (pc.signalingState !== 'stable') {
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.payload));
+            await flushPendingIceCandidates();
+          }
+        } else if (msg.type === 'candidate' && msg.payload) {
+          if (pc.remoteDescription) {
+            await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
+          } else {
+            pendingIceCandidates.push(msg.payload as RTCIceCandidateInit);
+          }
+        } else if (msg.type === 'status') {
+          const info = msg.payload?.cameraInfo;
+          if (info) {
+            if (info.batteryLevel !== undefined) setBatteryLevel(info.batteryLevel);
+            if (info.isCharging !== undefined) setIsCharging(info.isCharging);
+          }
         }
-        setIsBuffering(false);
-      } else if (msg.type === 'candidate' && msg.payload) {
-        await pc.addIceCandidate(new RTCIceCandidate(msg.payload));
-      } else if (msg.type === 'status') {
-        const info = msg.payload?.cameraInfo;
-        if (info) {
-          if (info.batteryLevel !== undefined) setBatteryLevel(info.batteryLevel);
-          if (info.isCharging !== undefined) setIsCharging(info.isCharging);
-        }
+      } catch (error) {
+        console.error('Errore di segnalazione WebRTC nella schermata dettaglio', error);
       }
     });
 
