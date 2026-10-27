@@ -39,10 +39,10 @@ workflows:
               "android.permission.MODIFY_AUDIO_SETTINGS",
           ]
           for permission in permissions:
-              if not re.search(r'<uses-permission\\s+android:name="' + re.escape(permission) + r'"', s):
-                  s = re.sub(r'<application\\b', '<uses-permission android:name="' + permission + '" />\\n    <application', s, count=1)
+              if not re.search(r'<uses-permission\s+android:name="' + re.escape(permission) + r'"', s):
+                  s = re.sub(r'<application\b', '<uses-permission android:name="' + permission + '" />\n    <application', s, count=1)
           required = permissions[:2]
-          missing = [permission for permission in required if not re.search(r'<uses-permission\\s+android:name="' + re.escape(permission) + r'"', s)]
+          missing = [permission for permission in required if not re.search(r'<uses-permission\s+android:name="' + re.escape(permission) + r'"', s)]
           if missing:
               raise SystemExit("Missing Android permissions: " + ", ".join(missing))
           p.write_text(s)
