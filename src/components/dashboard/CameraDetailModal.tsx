@@ -93,18 +93,35 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
       }
     };
 
-    pc.ontrack = (event) => {
-      const stream = event.streams?.[0];
-      const video = videoRef.current;
-      if (!stream || !video) return;
+    const remoteMediaStream = new MediaStream();
+    pc.ontrack = async (event) => {
+      const incomingStream = event.streams?.[0];
+      const track = event.track;
+      if (incomingStream) {
+        incomingStream.getTracks().forEach((incomingTrack) => {
+          if (!remoteMediaStream.getTracks().some((t) => t.id === incomingTrack.id)) {
+            remoteMediaStream.addTrack(incomingTrack);
+          }
+        });
+      } else if (!remoteMediaStream.getTracks().some((t) => t.id === track.id)) {
+        remoteMediaStream.addTrack(track);
+      }
 
-      video.srcObject = stream;
-      void video.play().then(() => {
-        setIsBuffering(false);
-      }).catch((error) => {
+      const video = videoRef.current;
+      if (!video || track.kind !== 'video') return;
+      video.srcObject = incomingStream || remoteMediaStream;
+      const markVideoReady = () => {
+        if (video.videoWidth > 0 && video.videoHeight > 0) setIsBuffering(false);
+      };
+      video.onloadeddata = markVideoReady;
+      video.onplaying = markVideoReady;
+      if (track.muted) track.onunmute = markVideoReady;
+      try {
+        await video.play();
+        markVideoReady();
+      } catch (error) {
         console.error('Impossibile riprodurre il flusso video ricevuto', error);
-        setIsBuffering(false);
-      });
+      }
     };
 
     pc.onconnectionstatechange = () => {
