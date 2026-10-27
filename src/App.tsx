@@ -174,7 +174,7 @@ export default function App() {
       const data = await response.json();
       if (!data.sessionId || !data.pin) throw new Error('Il server non ha restituito sessione e PIN.');
       const session = String(data.sessionId), code = String(data.pin);
-      const url = `${getSignalingBaseUrl()}/#camera&session=${encodeURIComponent(session)}&pin=${encodeURIComponent(code)}`;
+      const url = `${getSignalingBaseUrl()}/?mode=camera&session=${encodeURIComponent(session)}&pin=${encodeURIComponent(code)}`;
       const qr = await generateQrDataUrl(url);
       // Register the viewer tile immediately: it owns the receiving WebRTC peer connection.
       const pairedCamera: CameraDevice = {
@@ -200,7 +200,7 @@ export default function App() {
   };
   const openPhoneCameraPairing = () => { setPairingOpen(true); if (!pairingSessionId) void createPhoneCameraPairing(); };
   const copyPhonePairingLink = async () => {
-    const url = `${getSignalingBaseUrl()}/#camera&session=${encodeURIComponent(pairingSessionId)}&pin=${encodeURIComponent(pairingPin)}`;
+    const url = `${getSignalingBaseUrl()}/?mode=camera&session=${encodeURIComponent(pairingSessionId)}&pin=${encodeURIComponent(pairingPin)}`;
     try { await navigator.clipboard.writeText(url); setPairingCopied(true); }
     catch { setPairingError('Copia automatica non disponibile: usa il QR oppure inserisci sessione e PIN manualmente.'); }
   };
@@ -277,25 +277,32 @@ export default function App() {
     return 'Buonasera';
   }, [currentHour]);
 
-  // Preserve pairing parameters from a QR link before clearing the URL hash.
+  // Accept both the current query-string QR format and legacy hash links.
+  // Query parameters survive QR scanner/browser hand-offs more reliably.
   useEffect(() => {
     const hash = window.location.hash;
-    if (hash.startsWith('#camera') || hash.startsWith('#viewer')) {
-      const isViewer = hash.startsWith('#viewer');
-      const marker = isViewer ? '#viewer' : '#camera';
-      const query = hash.slice(marker.length).replace(/^&/, '');
-      const params = new URLSearchParams(query);
-      const sessionId = params.get('session');
-      const pin = params.get('pin');
-      if (sessionId) {
-        setPairedSessionId(sessionId);
-        setPairedPin(pin || undefined);
-        setCurrentDestination(isViewer ? 'viewer_mode' : 'camera_mode');
-      }
+    const searchParams = new URLSearchParams(window.location.search);
+    let mode = searchParams.get('mode');
+    let sessionId = searchParams.get('session');
+    let pin = searchParams.get('pin');
+
+    if ((!mode || !sessionId) && (hash.startsWith('#camera') || hash.startsWith('#viewer'))) {
+      const isLegacyViewer = hash.startsWith('#viewer');
+      const marker = isLegacyViewer ? '#viewer' : '#camera';
+      const legacyParams = new URLSearchParams(hash.slice(marker.length).replace(/^&/, ''));
+      mode = mode || (isLegacyViewer ? 'viewer' : 'camera');
+      sessionId = sessionId || legacyParams.get('session');
+      pin = pin || legacyParams.get('pin');
     }
 
-    if (hash) {
-      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    if (sessionId && (mode === 'camera' || mode === 'viewer')) {
+      setPairedSessionId(sessionId);
+      setPairedPin(pin || undefined);
+      setCurrentDestination(mode === 'viewer' ? 'viewer_mode' : 'camera_mode');
+    }
+
+    if (hash || searchParams.has('mode') || searchParams.has('session') || searchParams.has('pin')) {
+      window.history.replaceState(null, '', window.location.pathname);
     }
   }, []);
 
