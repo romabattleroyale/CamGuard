@@ -20,7 +20,7 @@ import {
 import { CameraDevice } from '../../types/camera';
 import { generateQrDataUrl } from '../../utils/qr';
 import { SignalingClient } from '../../services/webrtc';
-import { apiFetch } from '../../services/api';
+import { apiFetch, getSignalingBaseUrl } from '../../services/api';
 
 interface AddCameraModalProps {
   isOpen: boolean;
@@ -89,8 +89,13 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
         setSessionId('');
         setPin('');
         setPairingUrl('');
+        const serverBaseUrl = getSignalingBaseUrl();
         const lanRes = await apiFetch('/api/lan-info');
-        let hostUrl = window.location.origin;
+        const lanContentType = lanRes.headers.get('content-type') || '';
+        if (!lanRes.ok || !lanContentType.includes('application/json')) {
+          throw new Error(`L'indirizzo del server configurato (${serverBaseUrl}) non sta restituendo le API CamGuard. Apri Impostazioni → Server di segnalazione e inserisci l'URL del backend, non quello di una pagina web generica.`);
+        }
+        let hostUrl = serverBaseUrl;
         if (lanRes.ok) {
           const lanData = await lanRes.json();
           if (lanData.localIp && lanData.localIp !== 'localhost') {
@@ -105,8 +110,9 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
           body: JSON.stringify({ name: phoneCamName }),
         });
 
-        if (!createRes.ok) {
-          throw new Error(`Il server di collegamento ha risposto con errore HTTP ${createRes.status}. Verifica che il backend CamGuard sia online e che l'URL del server sia corretto.`);
+        const createContentType = createRes.headers.get('content-type') || '';
+        if (!createRes.ok || !createContentType.includes('application/json')) {
+          throw new Error(`Il server (${serverBaseUrl}) non ha restituito una risposta API valida (HTTP ${createRes.status}). Probabilmente l'URL configurato punta alla pagina web e non al backend CamGuard.`);
         }
         if (!isMounted) return;
         const data = await createRes.json();
@@ -119,7 +125,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
         setSessionId(sId);
         setPin(sPin);
 
-        const pairTarget = `${window.location.origin}/#camera&session=${sId}&pin=${sPin}`;
+        const pairTarget = `${serverBaseUrl}/#camera&session=${sId}&pin=${sPin}`;
         setPairingUrl(pairTarget);
 
         const qrUrl = await generateQrDataUrl(pairTarget);
