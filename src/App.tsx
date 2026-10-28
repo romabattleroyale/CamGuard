@@ -125,7 +125,7 @@ export default function App() {
 
     <AnimatePresence>
       {selectedRecipe && <motion.div className="modal-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onMouseDown={e => {if(e.target === e.currentTarget) setSelectedRecipe(null);}}>
-        <motion.div className="recipe-modal" initial={{y:24,opacity:0,scale:.98}} animate={{y:0,opacity:1,scale:1}} exit={{y:16,opacity:0}} transition={{duration:.22}}>
+        <motion.div role="dialog" aria-modal="true" aria-label={selectedRecipe.title} className="recipe-modal" initial={{y:24,opacity:0,scale:.98}} animate={{y:0,opacity:1,scale:1}} exit={{y:16,opacity:0}} transition={{duration:.22}}>
           <button className="modal-close" onClick={() => setSelectedRecipe(null)} aria-label="Chiudi"><X size={20}/></button>
           <img className="modal-hero" src={selectedRecipe.image} alt={selectedRecipe.title}/>
           <div className="modal-content"><div className="card-meta"><span>{selectedRecipe.category}</span><span className="rating">★ {selectedRecipe.rating}</span></div><h2>{selectedRecipe.title}</h2><p className="modal-subtitle">{selectedRecipe.subtitle}</p><div className="modal-stats"><span><Clock3 size={16}/>{selectedRecipe.time} min</span><span><Flame size={16}/>{selectedRecipe.difficulty}</span><span><Users size={16}/>{servings} porzioni</span></div>
