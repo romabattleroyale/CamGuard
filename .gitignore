@@ -2,7 +2,12 @@ node_modules/
 build/
 dist/
 coverage/
+test-results/
+playwright-report/
+playwright/.cache/
 .DS_Store
 *.log
 .env*
 !.env.example
+data/recipes/catalog.jsonl
+data/recipes/generation-state.json
