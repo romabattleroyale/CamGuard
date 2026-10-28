@@ -55,7 +55,7 @@ async function main() {
     });
     const raw = response.text ?? '';
     let parsed: { recipes?: Omit<Recipe, 'id'|'imageStatus'>[] };
-    try { parsed = JSON.parse(raw); } catch { console.error('Risposta JSON non valida; lotto saltato, riprova.'); continue; }
+    try { parsed = JSON.parse(raw); } catch { throw new Error('Gemini ha restituito JSON non valido. Interrompo la generazione per evitare un ciclo infinito; riprova dopo aver verificato il modello e la risposta.'); }
     const fresh: Recipe[] = [];
     for (const item of parsed.recipes ?? []) {
       if (!item.title || !Array.isArray(item.ingredients) || item.ingredients.length < 2 || !Array.isArray(item.steps) || item.steps.length < 3) continue;
