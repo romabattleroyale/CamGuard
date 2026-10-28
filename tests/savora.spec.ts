@@ -18,8 +18,9 @@ test('recipe search filters cards', async ({ page }) => {
 test('recipe detail opens and portion control works', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /apri tiramisù classico/i }).click();
-  await expect(page.getByRole('heading', { name: /tiramisù classico/i })).toBeVisible();
-  await page.getByRole('button', { name: 'Più porzioni' }).click();
+  const recipeDialog = page.getByRole('dialog', { name: /tiramisù classico/i });
+  await expect(recipeDialog.getByRole('heading', { name: /tiramisù classico/i })).toBeVisible();
+  await recipeDialog.getByRole('button', { name: 'Più porzioni' }).click();
   await expect(page.getByText('7 porzioni')).toBeVisible();
 });
 
