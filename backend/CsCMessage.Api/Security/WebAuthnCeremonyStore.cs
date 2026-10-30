@@ -6,6 +6,7 @@ namespace CsCMessage.Api.Security;
 
 public enum WebAuthnCeremonyPurpose
 {
+    FirstAccountEnrollment,
     Registration,
     Authentication
 }
@@ -44,6 +45,7 @@ public sealed class WebAuthnCeremonyStore(NpgsqlDataSource dataSource)
         var expires = now.Add(MaximumLifetime);
         var purposeValue = purpose switch
         {
+            WebAuthnCeremonyPurpose.FirstAccountEnrollment => "first_enrollment",
             WebAuthnCeremonyPurpose.Registration => "registration",
             WebAuthnCeremonyPurpose.Authentication => "authentication",
             _ => throw new ArgumentOutOfRangeException(nameof(purpose))
@@ -91,6 +93,7 @@ public sealed class WebAuthnCeremonyStore(NpgsqlDataSource dataSource)
 
         var purpose = reader.GetString(2) switch
         {
+            "first_enrollment" => WebAuthnCeremonyPurpose.FirstAccountEnrollment,
             "registration" => WebAuthnCeremonyPurpose.Registration,
             "authentication" => WebAuthnCeremonyPurpose.Authentication,
             _ => throw new InvalidOperationException("Unknown WebAuthn ceremony purpose in storage.")

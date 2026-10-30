@@ -114,6 +114,20 @@ try
     if (await ceremonyStore.ConsumeAsync(ceremonyChallenge) is not null)
         throw new Exception("A WebAuthn challenge was accepted more than once.");
 
+    var firstEnrollmentChallenge = RandomNumberGenerator.GetBytes(32);
+    var firstEnrollmentOptions = JsonSerializer.Serialize(new { challenge = Convert.ToBase64String(firstEnrollmentChallenge), rpId = "localhost" });
+    var firstEnrollmentId = await ceremonyStore.CreateAsync(
+        null, WebAuthnCeremonyPurpose.FirstAccountEnrollment, firstEnrollmentChallenge, firstEnrollmentOptions);
+    var concurrentConsumption = await Task.WhenAll(
+        ceremonyStore.ConsumeAsync(firstEnrollmentChallenge),
+        ceremonyStore.ConsumeAsync(firstEnrollmentChallenge));
+    if (concurrentConsumption.Count(item => item is not null) != 1 ||
+        concurrentConsumption.Single(item => item is not null) is not { } firstEnrollment ||
+        firstEnrollment.Id != firstEnrollmentId ||
+        firstEnrollment.AccountId is not null ||
+        firstEnrollment.Purpose != WebAuthnCeremonyPurpose.FirstAccountEnrollment)
+        throw new Exception("First-account enrollment ceremony was not purpose-bound and single-use under concurrent completion.");
+
     var expiredChallenge = RandomNumberGenerator.GetBytes(32);
     var expiredCeremonyId = await ceremonyStore.CreateAsync(
         accountId, WebAuthnCeremonyPurpose.Authentication, expiredChallenge, ceremonyOptions);
