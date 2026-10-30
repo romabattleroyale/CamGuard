@@ -39,7 +39,7 @@ export default function App(){
   2:[{from:'them',text:'Ho trovato un hotel fantastico vicino al mare!',time:'09:32'}]
  });
  const filtered=useMemo(()=>chats.filter(c=>c.name.toLowerCase().includes(search.toLowerCase())||c.preview.toLowerCase().includes(search.toLowerCase())),[chats,search]);
- function send(){if(!message.trim()||!selected)return;setThread(t=>({...t,[selected]:[...(t[selected]||[]),{from:'me',text:message.trim(),time:new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}]}));setChats(cs=>cs.map(c=>c.id===selected?{...c,preview:message.trim(),time:'Ora'}:c));setMessage('')}
+ function send(){const selectedId=selected;if(!message.trim()||selectedId===null)return;setThread(t=>({...t,[selectedId]:[...(t[selectedId]||[]),{from:'me',text:message.trim(),time:new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}]}));setChats(cs=>cs.map(c=>c.id===selectedId?{...c,preview:message.trim(),time:'Ora'}:c));setMessage('')}
  function toast(t:string){setNotice(t);window.setTimeout(()=>setNotice(''),2600)}
  function createChat(){const c:Chat={id:Date.now(),name:'Nuova conversazione',initials:'NC',color:'mint',preview:'Nessun messaggio',time:'Ora',unread:0,online:false};setChats([c,...chats]);setSelected(c.id);setShowNew(false);setTab('chat')}
  return <div className={`app-shell ${dark?'dark':'light'}`}>
