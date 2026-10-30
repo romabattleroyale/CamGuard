@@ -58,7 +58,7 @@ public sealed class RefreshSessionStore(NpgsqlDataSource dataSource)
     public async Task<RefreshRotationResult> RotateAsync(
         string presentedToken, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(presentedToken) || presentedToken.Length > 256)
+        if (!IsValidRefreshToken(presentedToken))
             return new RefreshRotationResult(RefreshRotationStatus.Invalid);
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -182,6 +182,13 @@ public sealed class RefreshSessionStore(NpgsqlDataSource dataSource)
     private static string CreateOpaqueToken() =>
         Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private static bool IsValidRefreshToken(string? token) =>
+        token is { Length: 43 } &&
+        token.All(character =>
+            character is >= 'A' and <= 'Z' or
+                >= 'a' and <= 'z' or
+                >= '0' and <= '9' or '-' or '_');
 
     private static byte[] HashToken(string token) =>
         SHA256.HashData(Encoding.ASCII.GetBytes(token));
