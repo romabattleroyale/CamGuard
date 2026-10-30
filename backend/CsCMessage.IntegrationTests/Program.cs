@@ -130,7 +130,57 @@ try
 
     await ceremonyStore.DeleteExpiredAsync();
 
-    Console.WriteLine("PASS: refresh-token lifecycle and WebAuthn ceremony persistence, expiry and single-use consumption.");
+    var passkeyStore = new PasskeyCredentialStore(dataSource);
+    var credentialId = RandomNumberGenerator.GetBytes(32);
+    var publicKey = RandomNumberGenerator.GetBytes(65);
+    var userHandle = RandomNumberGenerator.GetBytes(32);
+    var aaGuid = Guid.NewGuid();
+
+    if (!await passkeyStore.AddAsync(
+        accountId, credentialId, publicKey, userHandle, 3,
+        ["internal", "hybrid"], aaGuid, "  Telefono principale  "))
+        throw new Exception("A new public passkey credential was not stored.");
+
+    if (await passkeyStore.AddAsync(
+        accountId, credentialId, publicKey, userHandle, 3,
+        ["internal"], aaGuid, "Duplicato"))
+        throw new Exception("A duplicate WebAuthn credential ID was accepted.");
+
+    var storedPasskey = await passkeyStore.GetByCredentialIdAsync(credentialId);
+    if (storedPasskey is null ||
+        storedPasskey.AccountId != accountId ||
+        !storedPasskey.PublicKey.SequenceEqual(publicKey) ||
+        !storedPasskey.UserHandle.SequenceEqual(userHandle) ||
+        storedPasskey.SignatureCounter != 3 ||
+        storedPasskey.DisplayName != "Telefono principale" ||
+        storedPasskey.AaGuid != aaGuid ||
+        !storedPasskey.Transports.SequenceEqual(["internal", "hybrid"]))
+        throw new Exception("Stored public passkey material did not round-trip correctly.");
+
+    var byHandle = await passkeyStore.GetByUserHandleAsync(userHandle);
+    if (byHandle.Count != 1 || !byHandle[0].CredentialId.SequenceEqual(credentialId))
+        throw new Exception("Passkey lookup by user handle did not return the owning credential.");
+
+    if (!await passkeyStore.TryUpdateCounterAsync(credentialId, 3, 4))
+        throw new Exception("Passkey signature counter did not advance.");
+    if (await passkeyStore.TryUpdateCounterAsync(credentialId, 3, 5))
+        throw new Exception("A stale concurrent passkey counter update was accepted.");
+    if (await passkeyStore.TryUpdateCounterAsync(credentialId, 4, 2))
+        throw new Exception("A decreasing passkey signature counter was accepted.");
+
+    var updatedPasskey = await passkeyStore.GetByCredentialIdAsync(credentialId);
+    if (updatedPasskey?.SignatureCounter != 4 || updatedPasskey.LastUsedAt is null)
+        throw new Exception("Passkey counter update did not persist atomically.");
+
+    if (await passkeyStore.RevokeAsync(Guid.NewGuid(), credentialId))
+        throw new Exception("A different account was able to revoke this passkey.");
+    if (!await passkeyStore.RevokeAsync(accountId, credentialId))
+        throw new Exception("The owning account could not revoke its passkey.");
+    if (await passkeyStore.GetByCredentialIdAsync(credentialId) is not null ||
+        (await passkeyStore.GetByUserHandleAsync(userHandle)).Count != 0)
+        throw new Exception("A revoked passkey remained available for authentication.");
+
+    Console.WriteLine("PASS: refresh-token lifecycle, WebAuthn ceremony state and public passkey credential persistence/revocation.");
 }
 finally
 {
