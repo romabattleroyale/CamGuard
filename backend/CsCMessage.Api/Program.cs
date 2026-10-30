@@ -1,6 +1,16 @@
+using CsCMessage.Api.Security;
+using Npgsql;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHealthChecks();
+
+var connectionString = builder.Configuration.GetConnectionString("CsCMessage");
+if (!string.IsNullOrWhiteSpace(connectionString))
+{
+    builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(connectionString));
+    builder.Services.AddScoped<RefreshSessionStore>();
+}
 
 var app = builder.Build();
 
