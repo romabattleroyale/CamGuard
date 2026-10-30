@@ -35,12 +35,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/database/migrations/001_initial_public_identity.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/database/migrations/001_initial_public_identity.sql
+          for migration in backend/database/migrations/*.sql; do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          for migration in backend/database/migrations/*.sql; do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
           DO $check$
           BEGIN
-            IF (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('accounts','devices','signed_prekeys','one_time_prekeys')) <> 4 THEN
+            IF (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('accounts','devices','signed_prekeys','one_time_prekeys','device_sessions')) <> 5 THEN
               RAISE EXCEPTION 'Expected identity tables are missing';
             END IF;
             IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND column_name IN ('private_key','private_identity_key','message_body','plaintext')) THEN
