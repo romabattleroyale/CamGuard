@@ -44,11 +44,25 @@ test('mobile navigation, search and conversation composer work', async ({ page }
   await expect(page.getByText(/supera il limite di 10 MB/i)).toBeVisible();
   await expect(page.locator('.attachment-preview')).toHaveCount(0);
 
-  await fileInput.setInputFiles({name:'foto-chat.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p6sAAAAASUVORK5CYII=','base64')});
+  const imageBase64 = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 640; canvas.height = 360;
+    const context = canvas.getContext('2d')!;
+    const gradient = context.createLinearGradient(0, 0, 640, 360);
+    gradient.addColorStop(0, '#168dff'); gradient.addColorStop(1, '#7659ed');
+    context.fillStyle = gradient; context.fillRect(0, 0, 640, 360);
+    context.fillStyle = '#ffffff'; context.font = 'bold 34px sans-serif';
+    context.fillText('CsCMessage · Foto di prova', 32, 190);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  await fileInput.setInputFiles({name:'foto-chat.png',mimeType:'image/png',buffer:Buffer.from(imageBase64,'base64')});
   await expect(page.getByAltText('Anteprima allegato')).toBeVisible();
+  await expect(page.getByAltText('Anteprima allegato')).toHaveJSProperty('naturalWidth', 640);
   await expect(page.getByText(/Pronto per l’invio/)).toBeVisible();
   await page.getByRole('button', { name: /Invia messaggio/i }).click();
   await expect(page.getByAltText('foto-chat.png')).toBeVisible();
+  await expect(page.getByAltText('foto-chat.png')).toHaveJSProperty('naturalWidth', 640);
+  await expect(page.locator('.toast')).toBeHidden();
   await page.screenshot({ path: 'test-results/cscmessage-mobile-chat.png', fullPage: true });
 });
 
