@@ -9,12 +9,35 @@ on:
 jobs:
   backend-build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cscmessage
+          POSTGRES_PASSWORD: cscmessage_test
+          POSTGRES_DB: cscmessage_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cscmessage -d cscmessage_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
       - run: dotnet build backend/CsCMessage.Api/CsCMessage.Api.csproj --configuration Release
+      - name: Validate PostgreSQL identity schema
+        env:
+          DATABASE_URL: postgresql://cscmessage:cscmessage_test@localhost:5432/cscmessage_test
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/database/migrations/001_initial_public_identity.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/database/migrations/001_initial_public_identity.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "DO \\$\\$ BEGIN IF (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('accounts','devices','signed_prekeys','one_time_prekeys')) <> 4 THEN RAISE EXCEPTION 'Expected identity tables are missing'; END IF; IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND column_name IN ('private_key','private_identity_key','message_body','plaintext')) THEN RAISE EXCEPTION 'Forbidden sensitive column found'; END IF; END \\$\\$;"
       - name: Smoke test API liveness endpoint
         shell: bash
         run: |
