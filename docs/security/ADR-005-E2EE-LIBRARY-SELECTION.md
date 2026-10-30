@@ -62,3 +62,49 @@ No candidate is approved for production yet.
 ## Consequences
 
 This deliberately delays the first real encrypted message rather than creating a misleading or unsafe demo. UI demo messages remain explicitly labelled as local. The next implementation task is a comparative native proof-of-concept and threat-model review, not a public API endpoint.
+
+
+## Follow-up review: repository and package evidence (2026-10-30)
+
+The public candidate evidence was rechecked against the upstream repositories and package metadata. The result is more restrictive than the initial summary:
+
+### OpenE2EE Signal SDK — not approved, provenance/license gate unresolved
+
+- Upstream repository: https://github.com/open-e2ee/signal-protocol-js
+- The current GitHub README describes the project as an early `0.1.0-alpha`, says its API and persisted formats may change before 1.0, and labels the repository AGPL-3.0-or-later with a separate commercial license option.
+- The npm registry search result currently advertises a newer `13.4.0` release under MIT OR Apache-2.0. These public surfaces do not agree on versioning and licensing. Do not infer that the package tarball is built from the reviewed repository or that its license is interchangeable.
+- The upstream README states it is not wire-compatible with Signal Messenger/libsignal, has no independent security audit, and JavaScript engines cannot guarantee machine-level constant-time execution or reliable memory zeroization.
+- Its published README documents browser support and a Vite browser example, but the browser storage notes identify same-origin JavaScript access to the key as a boundary. Capacitor WebView and native secure-vault behavior must be demonstrated independently; browser support is not proof of secure Android/iOS key custody.
+
+**Decision:** do not install this dependency or use it for real user messages until the exact npm tarball, source commit, provenance, SPDX license, lockfile integrity, storage adapter, and security policy are reconciled. Require legal review if the artifact is AGPL or requires a commercial license.
+
+### OpenMLS — credible standards implementation, but not a drop-in client
+
+- Upstream: https://github.com/openmls/openmls
+- The repository declares MIT licensing and implements MLS (RFC 9420).
+- Its current README lists Android and iOS targets under “unsupported, but built on CI”; these are cross-compilation claims, not tested mobile-runtime support.
+- OpenMLS is an MLS building block. Adopting it would require a reviewed Rust FFI layer, platform key custody, persistent state adapter, and an application protocol decision for 1:1 and group conversations.
+
+**Decision:** keep as a research candidate, not as the immediate messaging engine. Do not mistake the unrelated Dart/Flutter wrapper ecosystem for a drop-in dependency in this React + Capacitor application.
+
+### Signal libsignal — protocol fit, license/support trade-off
+
+- Upstream: https://github.com/signalapp/libsignal
+- GitHub currently reports AGPL-3.0.
+- Signal's own repository says use outside Signal is unsupported. The Java/Swift bridge and native toolchain are viable investigation paths, but product licensing and maintenance risk remain open.
+
+**Decision:** no production adoption without written legal review and an explicit support/maintenance plan.
+
+## Updated implementation choice
+
+No library is currently cleared for production. The next engineering spike is a **non-production compatibility harness**, not an app integration:
+
+1. Pin exact upstream commit and package tarball; compare package contents to the claimed source and license.
+2. Generate an SBOM and verify every transitive dependency and license.
+3. Build a minimal Capacitor Android harness that calls the candidate only through an adapter boundary; do not store real user secrets or send real messages.
+4. Verify key generation, encrypted local persistence, app restart, process death, lock/unlock, backup exclusion, and key deletion on physical Android hardware.
+5. Repeat the storage and lifecycle tests on a physical iPhone before claiming cross-platform support.
+6. Exercise published protocol vectors, replay, out-of-order delivery, ratchet advancement, concurrent device sessions, and malformed ciphertext.
+7. Document what is not protected against a compromised/rooted device, malicious same-origin script, memory inspection, backups, or notification metadata.
+
+The harness must use synthetic test identities and disposable test messages only. No public onboarding, key publication, or message transport endpoints are enabled by this ADR.
