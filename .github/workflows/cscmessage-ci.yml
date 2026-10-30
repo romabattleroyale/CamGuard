@@ -15,6 +15,20 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - run: dotnet build backend/CsCMessage.Api/CsCMessage.Api.csproj --configuration Release
+      - name: Smoke test API liveness endpoint
+        shell: bash
+        run: |
+          dotnet run --no-build --configuration Release --project backend/CsCMessage.Api/CsCMessage.Api.csproj --urls http://127.0.0.1:5080 > /tmp/cscmessage-api.log 2>&1 &
+          API_PID=$!
+          trap 'kill "$API_PID" 2>/dev/null || true' EXIT
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:5080/health/live; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/cscmessage-api.log
+          exit 1
 
   web-and-playwright:
     runs-on: ubuntu-latest
