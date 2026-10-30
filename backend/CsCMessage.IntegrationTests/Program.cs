@@ -128,6 +128,37 @@ try
         firstEnrollment.Purpose != WebAuthnCeremonyPurpose.FirstAccountEnrollment)
         throw new Exception("First-account enrollment ceremony was not purpose-bound and single-use under concurrent completion.");
 
+    var rollbackChallenge = RandomNumberGenerator.GetBytes(32);
+    var rollbackOptions = JsonSerializer.Serialize(new { challenge = Convert.ToBase64String(rollbackChallenge), rpId = "localhost" });
+    await ceremonyStore.CreateAsync(null, WebAuthnCeremonyPurpose.FirstAccountEnrollment, rollbackChallenge, rollbackOptions);
+    var rollbackAccountId = Guid.NewGuid();
+    await using (var rollbackConnection = await dataSource.OpenConnectionAsync())
+    await using (var transaction = await rollbackConnection.BeginTransactionAsync())
+    {
+        var consumedInTransaction = await ceremonyStore.ConsumeAsync(
+            rollbackChallenge, rollbackConnection, transaction);
+        if (consumedInTransaction?.Purpose != WebAuthnCeremonyPurpose.FirstAccountEnrollment)
+            throw new Exception("The enrollment challenge was not consumed inside the caller transaction.");
+
+        await using var insertAccount = new NpgsqlCommand(
+            "INSERT INTO accounts (id) VALUES (@account)", rollbackConnection, transaction);
+        insertAccount.Parameters.AddWithValue("account", rollbackAccountId);
+        await insertAccount.ExecuteNonQueryAsync();
+        await transaction.RollbackAsync();
+    }
+
+    await using (var verifyRollback = await dataSource.OpenConnectionAsync())
+    await using (var command = new NpgsqlCommand(
+        "SELECT count(*) FROM accounts WHERE id = @account", verifyRollback))
+    {
+        command.Parameters.AddWithValue("account", rollbackAccountId);
+        if (Convert.ToInt64(await command.ExecuteScalarAsync()) != 0)
+            throw new Exception("A partially-created account survived enrollment rollback.");
+    }
+
+    if (await ceremonyStore.ConsumeAsync(rollbackChallenge) is null)
+        throw new Exception("Challenge consumption was not rolled back with the failed account transaction.");
+
     var expiredChallenge = RandomNumberGenerator.GetBytes(32);
     var expiredCeremonyId = await ceremonyStore.CreateAsync(
         accountId, WebAuthnCeremonyPurpose.Authentication, expiredChallenge, ceremonyOptions);
