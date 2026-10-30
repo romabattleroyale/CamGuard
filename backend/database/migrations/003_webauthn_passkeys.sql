@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS webauthn_challenges (
     purpose TEXT NOT NULL CHECK (purpose IN ('registration', 'authentication')),
     challenge_hash BYTEA NOT NULL UNIQUE
         CHECK (octet_length(challenge_hash) = 32),
+    ceremony_options JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     expires_at TIMESTAMPTZ NOT NULL,
     consumed_at TIMESTAMPTZ NULL,
@@ -50,6 +51,6 @@ COMMENT ON TABLE passkey_credentials IS
 COMMENT ON COLUMN passkey_credentials.public_key IS
     'Public COSE credential key material validated by the WebAuthn relying-party implementation.';
 COMMENT ON TABLE webauthn_challenges IS
-    'Single-use WebAuthn challenge digests; raw challenges are transient and must never be logged.';
+    'Single-use WebAuthn ceremonies. ceremony_options retains short-lived relying-party options (including the nonce sent to the client) so the library can validate the response; never log options or raw challenges.';
 
 COMMIT;
