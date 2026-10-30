@@ -1,5 +1,5 @@
 using CsCMessage.Api.Security;
-using Fido2;
+using Fido2NetLib;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,8 +36,8 @@ if (hasAnyRelyingPartySetting)
 
     builder.Services.AddFido2(options =>
     {
-        options.ServerDomain = relyingPartyDomain;
-        options.ServerName = relyingPartyName;
+        options.RPID = relyingPartyDomain;
+        options.RPName = relyingPartyName;
         options.Origins = relyingPartyOrigins.ToHashSet(StringComparer.OrdinalIgnoreCase);
     });
 }
