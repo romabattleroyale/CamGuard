@@ -57,7 +57,24 @@ jobs:
         env:
           ConnectionStrings__CsCMessage: Host=localhost;Port=5432;Database=cscmessage_test;Username=cscmessage;Password=cscmessage_test
         run: dotnet run --project backend/CsCMessage.IntegrationTests/CsCMessage.IntegrationTests.csproj --configuration Release
-      - name: Smoke test API liveness endpoint
+      - name: Reject incomplete WebAuthn relying-party configuration
+        shell: bash
+        run: |
+          set +e
+          Fido2__ServerDomain=localhost Fido2__ServerName=CsCMessage \
+            dotnet run --no-build --configuration Release --project backend/CsCMessage.Api/CsCMessage.Api.csproj --urls http://127.0.0.1:5081 > /tmp/cscmessage-webauthn-invalid.log 2>&1
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -eq 0 ] || ! grep -q "WebAuthn requires" /tmp/cscmessage-webauthn-invalid.log; then
+            cat /tmp/cscmessage-webauthn-invalid.log
+            echo "Incomplete relying-party configuration was not rejected" >&2
+            exit 1
+          fi
+      - name: Smoke test API liveness endpoint with WebAuthn configured
+        env:
+          Fido2__ServerDomain: localhost
+          Fido2__ServerName: CsCMessage CI
+          Fido2__Origins__0: https://localhost
         shell: bash
         run: |
           dotnet run --no-build --configuration Release --project backend/CsCMessage.Api/CsCMessage.Api.csproj --urls http://127.0.0.1:5080 > /tmp/cscmessage-api.log 2>&1 &
