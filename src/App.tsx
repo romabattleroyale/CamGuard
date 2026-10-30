@@ -36,12 +36,12 @@ export default function App(){
  const [aiAnswer,setAiAnswer]=useState('');
  const [notice,setNotice]=useState('');
  const messageAreaRef=useRef<HTMLDivElement|null>(null);
- useEffect(()=>{const area=messageAreaRef.current;if(area)area.scrollTop=area.scrollHeight},[selected,thread]);
  const active=chats.find(c=>c.id===selected);
  const [thread,setThread]=useState<Record<number,ChatMessage[]>>({
   1:[{from:'them',text:'Ehi! Hai visto le foto del weekend? ✨',time:'09:38'},{from:'me',text:'Sì, sono bellissime! Dobbiamo rifarlo presto.',time:'09:39'},{from:'them',text:'Assolutamente! Organizziamo qualcosa per il prossimo mese?',time:'09:41'}],
   2:[{from:'them',text:'Ho trovato un hotel fantastico vicino al mare!',time:'09:32'}]
  });
+ useEffect(()=>{const area=messageAreaRef.current;if(area)area.scrollTop=area.scrollHeight},[selected,thread]);
  const filtered=useMemo(()=>chats.filter(c=>c.name.toLowerCase().includes(search.toLowerCase())||c.preview.toLowerCase().includes(search.toLowerCase())),[chats,search]);
  function send(){const selectedId=selected;if(!message.trim()||selectedId===null)return;setThread(t=>({...t,[selectedId]:[...(t[selectedId]||[]),{from:'me',text:message.trim(),time:new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}),...(replyTo?{replyTo}: {})}]}));setReplyTo(null);setChats(cs=>cs.map(c=>c.id===selectedId?{...c,preview:message.trim(),time:'Ora'}:c));setMessage('')}
  function toast(t:string){setNotice(t);window.setTimeout(()=>setNotice(''),2600)}
