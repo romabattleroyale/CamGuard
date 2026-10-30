@@ -12,6 +12,7 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(connectionString));
     builder.Services.AddScoped<RefreshSessionStore>();
     builder.Services.AddScoped<WebAuthnCeremonyStore>();
+    builder.Services.AddScoped<PasskeyCredentialStore>();
 }
 
 var relyingPartyDomain = builder.Configuration["Fido2:ServerDomain"];
