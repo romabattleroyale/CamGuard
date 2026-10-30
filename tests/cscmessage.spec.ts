@@ -30,8 +30,23 @@ test('mobile navigation, search and conversation composer work', async ({ page }
   await expect(page.getByText('Ciao da Playwright').last()).toBeVisible();
   await expect(page.getByText('Ricevuto!')).toBeVisible();
   await expect(page.getByText('Ricevuto!')).toBeInViewport();
-  await page.locator('input[type="file"]').setInputFiles({name:'foto-chat.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p6sAAAAASUVORK5CYII=','base64')});
+  const fileInput = page.locator('input[type="file"]');
+  await fileInput.setInputFiles({name:'manuale.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4 demo')});
+  await expect(page.getByText(/manuale.pdf/)).toBeVisible();
+  await expect(page.getByText(/Pronto per l’invio/)).toBeVisible();
+  await page.getByRole('button', { name: /Rimuovi allegato/i }).click();
+
+  await fileInput.setInputFiles({name:'script.exe',mimeType:'application/octet-stream',buffer:Buffer.from('not allowed')});
+  await expect(page.getByText(/Formato non supportato/i)).toBeVisible();
+  await expect(page.locator('.attachment-preview')).toHaveCount(0);
+
+  await fileInput.setInputFiles({name:'troppo-grande.pdf',mimeType:'application/pdf',buffer:Buffer.alloc(10*1024*1024+1)});
+  await expect(page.getByText(/supera il limite di 10 MB/i)).toBeVisible();
+  await expect(page.locator('.attachment-preview')).toHaveCount(0);
+
+  await fileInput.setInputFiles({name:'foto-chat.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p6sAAAAASUVORK5CYII=','base64')});
   await expect(page.getByAltText('Anteprima allegato')).toBeVisible();
+  await expect(page.getByText(/Pronto per l’invio/)).toBeVisible();
   await page.getByRole('button', { name: /Invia messaggio/i }).click();
   await expect(page.getByAltText('foto-chat.png')).toBeVisible();
   await page.screenshot({ path: 'test-results/cscmessage-mobile-chat.png', fullPage: true });
