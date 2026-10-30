@@ -62,6 +62,8 @@ The selected library's browser, Android and iOS integration still requires a ded
 
 See [Microsoft's passkey security guidance](https://learn.microsoft.com/aspnet/core/security/authentication/passkeys?view=aspnetcore-10.0) and the [FIDO2 .NET library](https://github.com/passwordless-lib/fido2-net-lib).
 
+See [ADR-005: E2EE protocol library selection](../docs/security/ADR-005-E2EE-LIBRARY-SELECTION.md) for the current candidate review and the explicit production acceptance gates.
+
 ## Security boundary
 Do not add plaintext message persistence, plaintext logging, server-side decryption, or message-send endpoints before the audited client E2EE integration is ready. See [the architecture decision](../docs/security/SECURE_BACKEND_ARCHITECTURE.md).
 
