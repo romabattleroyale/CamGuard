@@ -48,3 +48,15 @@
 .file-attachment{display:flex;align-items:center;gap:10px;min-width:180px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#168fff12}
 .file-attachment>svg{flex-shrink:0;color:var(--blue)}
 @media(max-width:680px){.attachment-preview{padding:7px 9px}.attachment-preview>img{width:42px;height:42px}.message-attachment{max-width:min(230px,65vw)}}
+
+
+/* Attachment metadata and responsive file previews */
+.image-attachment{display:grid;gap:6px}
+.image-attachment-meta{display:block;max-width:100%;overflow-wrap:anywhere;color:#d4e9ff;font-size:8px;line-height:1.4}
+.attachment-preview>span{overflow:hidden}
+.file-attachment{max-width:100%;overflow:hidden}
+.file-attachment b{overflow-wrap:anywhere}
+@media(max-width:680px){
+ .image-attachment-meta{font-size:8px}
+ .file-attachment{min-width:0;padding:9px}
+}
