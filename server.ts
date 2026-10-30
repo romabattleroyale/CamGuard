@@ -8,7 +8,7 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, app: 'Savora', version: '0.1.0' });
+  res.json({ ok: true, app: 'CsCMessage', version: '0.1.0' });
 });
 
 async function start() {
@@ -18,11 +18,11 @@ async function start() {
   });
   app.use(vite.middlewares);
   app.listen(PORT, '0.0.0.0', () => {
-    console.log('Savora is running on port ' + PORT);
+    console.log('CsCMessage is running on port ' + PORT);
   });
 }
 
 start().catch((error) => {
-  console.error('Unable to start Savora:', error);
+  console.error('Unable to start CsCMessage:', error);
   process.exit(1);
 });
