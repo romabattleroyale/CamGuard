@@ -63,7 +63,7 @@ public sealed class RefreshSessionStore(NpgsqlDataSource dataSource)
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(
-            System.Data.IsolationLevel.Serializable, cancellationToken);
+            System.Data.IsolationLevel.ReadCommitted, cancellationToken);
 
         Guid oldId;
         Guid accountId;
