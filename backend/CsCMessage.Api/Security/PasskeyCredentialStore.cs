@@ -75,7 +75,7 @@ public sealed class PasskeyCredentialStore(NpgsqlDataSource dataSource)
         command.Parameters.AddWithValue("user_handle", NpgsqlDbType.Bytea, userHandle);
         command.Parameters.AddWithValue("counter", (long)signatureCounter);
         command.Parameters.AddWithValue("transports", NpgsqlDbType.Array | NpgsqlDbType.Text, normalizedTransports);
-        command.Parameters.AddWithValue("aaguid", (object?)aaGuid ?? DBNull.Value);
+        command.Parameters.AddWithValue("aaguid", NpgsqlDbType.Uuid, (object?)aaGuid ?? DBNull.Value);
         command.Parameters.AddWithValue("display_name", label);
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
     }
