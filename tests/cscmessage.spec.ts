@@ -30,6 +30,10 @@ test('mobile navigation, search and conversation composer work', async ({ page }
   await expect(page.getByText('Ciao da Playwright').last()).toBeVisible();
   await expect(page.getByText('Ricevuto!')).toBeVisible();
   await expect(page.getByText('Ricevuto!')).toBeInViewport();
+  await page.locator('input[type="file"]').setInputFiles({name:'foto-chat.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p6sAAAAASUVORK5CYII=','base64')});
+  await expect(page.getByAltText('Anteprima allegato')).toBeVisible();
+  await page.getByRole('button', { name: /Invia messaggio/i }).click();
+  await expect(page.getByAltText('foto-chat.png')).toBeVisible();
   await page.screenshot({ path: 'test-results/cscmessage-mobile-chat.png', fullPage: true });
 });
 
