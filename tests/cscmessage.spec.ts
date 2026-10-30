@@ -24,7 +24,8 @@ test('mobile navigation, search and conversation composer work', async ({ page }
   await page.screenshot({ path: 'test-results/cscmessage-mobile-chat.png', fullPage: true });
 });
 
-test('CsC AI opens as an explicit opt-in preview', async ({ page }) => {
+test('CsC AI opens as an explicit opt-in preview', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile-chromium', 'CsC AI preview is currently presented in the desktop inbox only.');
   await page.goto('/');
   await page.getByRole('button', { name: /Apri CsC AI/i }).click();
   await expect(page.getByRole('heading', { name: /Chiedi a CsC AI/i })).toBeVisible();
