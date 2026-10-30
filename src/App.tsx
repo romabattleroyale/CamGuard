@@ -78,7 +78,7 @@ export default function App(){
    </nav>
    <div className="side-label side-label-spaced">PERSONALE</div>
    <button className={tab==='profile'?'profile-nav active':'profile-nav'} onClick={()=>setTab('profile')}><Avatar initials="CR" color="violet"/><span><b>Carlo Rossi</b><small>Il tuo profilo</small></span><Settings size={16}/></button>
-   <div className="sidebar-bottom"><div className="secure-note"><ShieldCheck size={17}/><span><b>La tua privacy conta</b><small>Connessione protetta</small></span></div><button className="theme-toggle" onClick={()=>setDark(!dark)}>{dark?<Sun size={16}/>:<Moon size={16}/>} {dark?'Modalità chiara':'Modalità scura'}</button><small className="version">CsCMessage · Preview 0.1</small></div>
+   <div className="sidebar-bottom"><div className="secure-note"><ShieldCheck size={17}/><span><b>Anteprima locale</b><small>Messaggi demo, non inviati</small></span></div><button className="theme-toggle" onClick={()=>setDark(!dark)}>{dark?<Sun size={16}/>:<Moon size={16}/>} {dark?'Modalità chiara':'Modalità scura'}</button><small className="version">CsCMessage · Preview 0.1</small></div>
   </aside>
   <main className="main-area">
    <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="breadcrumb"><span>Workspace</span><ChevronRight size={14}/><b>{tab==='chat'?'Messaggi':tab==='calls'?'Chiamate':tab==='spaces'?'Spaces':tab==='activity'?'Attività':'Profilo'}</b></div><div className="top-actions"><button className="icon-btn" aria-label="Aiuto" onClick={()=>toast('Centro assistenza in arrivo')}><CircleHelp/></button><button className="icon-btn notification" aria-label="Notifiche" onClick={()=>setTab('activity')}><Bell/><i/></button><Avatar initials="CR" color="violet"/></div></header>
