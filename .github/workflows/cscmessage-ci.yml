@@ -47,7 +47,7 @@ jobs:
             IF (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('accounts','devices','signed_prekeys','one_time_prekeys','device_sessions')) <> 5 THEN
               RAISE EXCEPTION 'Expected identity tables are missing';
             END IF;
-            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND column_name IN ('private_key','private_identity_key','message_body','plaintext')) THEN
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND column_name IN ('private_key','private_identity_key','authenticator_private_key','message_body','plaintext')) THEN
               RAISE EXCEPTION 'Forbidden sensitive column found';
             END IF;
           END
