@@ -67,7 +67,36 @@ try
             throw new Exception($"Expected both sessions in the token family to be revoked, found {revoked}.");
     }
 
-    Console.WriteLine("PASS: device-bound session creation, 256-bit token hashing, rotation and replay-family revocation.");
+    var concurrentBase = await store.CreateAsync(accountId, deviceId)
+        ?? throw new Exception("Could not create a session for the concurrency test.");
+
+    var concurrentResults = await Task.WhenAll(
+        store.RotateAsync(concurrentBase.RefreshToken),
+        store.RotateAsync(concurrentBase.RefreshToken));
+
+    if (concurrentResults.Count(result => result.Status == RefreshRotationStatus.Rotated) != 1 ||
+        concurrentResults.Count(result => result.Status == RefreshRotationStatus.ReuseDetected) != 1)
+        throw new Exception("Concurrent refresh attempts did not produce exactly one rotation and one replay detection.");
+
+    await using (var verifyConcurrentFamily = await dataSource.OpenConnectionAsync())
+    await using (var command = new NpgsqlCommand("""
+        SELECT count(*) FROM device_sessions
+        WHERE token_family_id = (
+            SELECT token_family_id FROM device_sessions WHERE id = @session
+        ) AND revoked_at IS NOT NULL
+        """, verifyConcurrentFamily))
+    {
+        command.Parameters.AddWithValue("session", concurrentBase.SessionId);
+        var revoked = Convert.ToInt64(await command.ExecuteScalarAsync());
+        if (revoked != 2)
+            throw new Exception($"Concurrent replay did not revoke both family sessions; found {revoked}.");
+    }
+
+    var invalidEncoding = await store.RotateAsync("é" + concurrentBase.RefreshToken[1..]);
+    if (invalidEncoding.Status != RefreshRotationStatus.Invalid)
+        throw new Exception("Non-ASCII refresh token input was not rejected.");
+
+    Console.WriteLine("PASS: token hashing, rotation, replay-family revocation, concurrent refresh race and strict token encoding.");
 }
 finally
 {
