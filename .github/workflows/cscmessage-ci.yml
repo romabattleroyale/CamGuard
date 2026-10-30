@@ -37,7 +37,18 @@ jobs:
           sudo apt-get install --yes postgresql-client
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/database/migrations/001_initial_public_identity.sql
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f backend/database/migrations/001_initial_public_identity.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "DO \\$\\$ BEGIN IF (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('accounts','devices','signed_prekeys','one_time_prekeys')) <> 4 THEN RAISE EXCEPTION 'Expected identity tables are missing'; END IF; IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND column_name IN ('private_key','private_identity_key','message_body','plaintext')) THEN RAISE EXCEPTION 'Forbidden sensitive column found'; END IF; END \\$\\$;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $
+          BEGIN
+            IF (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('accounts','devices','signed_prekeys','one_time_prekeys')) <> 4 THEN
+              RAISE EXCEPTION 'Expected identity tables are missing';
+            END IF;
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND column_name IN ('private_key','private_identity_key','message_body','plaintext')) THEN
+              RAISE EXCEPTION 'Forbidden sensitive column found';
+            END IF;
+          END
+          $;
+          SQL
       - name: Smoke test API liveness endpoint
         shell: bash
         run: |
