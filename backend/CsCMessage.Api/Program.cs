@@ -42,6 +42,9 @@ if (hasAnyRelyingPartySetting)
         options.RPName = relyingPartyName;
         options.Origins = relyingPartyOrigins.ToHashSet(StringComparer.OrdinalIgnoreCase);
     });
+
+    if (!string.IsNullOrWhiteSpace(connectionString))
+        builder.Services.AddScoped<FirstAccountPasskeyVerifier>();
 }
 
 var app = builder.Build();

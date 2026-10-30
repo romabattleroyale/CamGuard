@@ -75,6 +75,100 @@ public sealed class WebAuthnCeremonyStore(NpgsqlDataSource dataSource)
         return id;
     }
 
+    /// <summary>
+    /// Reads the server-stored options for a still-pending ceremony. This is a
+    /// read-only step before cryptographic verification; successful completion
+    /// must still consume the same ceremony inside the account-creation transaction.
+    /// </summary>
+    public async Task<StoredWebAuthnCeremony?> GetPendingAsync(
+        Guid ceremonyId,
+        WebAuthnCeremonyPurpose purpose,
+        Guid? accountId,
+        CancellationToken cancellationToken = default)
+    {
+        var purposeValue = purpose switch
+        {
+            WebAuthnCeremonyPurpose.FirstAccountEnrollment => "first_enrollment",
+            WebAuthnCeremonyPurpose.Registration => "registration",
+            WebAuthnCeremonyPurpose.Authentication => "authentication",
+            _ => throw new ArgumentOutOfRangeException(nameof(purpose))
+        };
+
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            SELECT id, account_id, purpose, ceremony_options::text
+            FROM webauthn_challenges
+            WHERE id = @id
+              AND purpose = @purpose
+              AND account_id IS NOT DISTINCT FROM @account
+              AND consumed_at IS NULL
+              AND expires_at > NOW()
+            """, connection);
+        command.Parameters.AddWithValue("id", ceremonyId);
+        command.Parameters.AddWithValue("purpose", purposeValue);
+        command.Parameters.AddWithValue("account", NpgsqlDbType.Uuid, (object?)accountId ?? DBNull.Value);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+            return null;
+
+        return new StoredWebAuthnCeremony(
+            reader.GetGuid(0),
+            reader.IsDBNull(1) ? null : reader.GetGuid(1),
+            purpose,
+            reader.GetString(3));
+    }
+
+    /// <summary>
+    /// Consumes a specific, purpose- and owner-bound ceremony in the caller's
+    /// transaction. This is intended to run only after FIDO2 verification succeeds.
+    /// </summary>
+    public async Task<StoredWebAuthnCeremony?> ConsumeAsync(
+        Guid ceremonyId,
+        WebAuthnCeremonyPurpose purpose,
+        Guid? accountId,
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(transaction);
+        if (!ReferenceEquals(transaction.Connection, connection))
+            throw new ArgumentException("The transaction must belong to the supplied connection.", nameof(transaction));
+
+        var purposeValue = purpose switch
+        {
+            WebAuthnCeremonyPurpose.FirstAccountEnrollment => "first_enrollment",
+            WebAuthnCeremonyPurpose.Registration => "registration",
+            WebAuthnCeremonyPurpose.Authentication => "authentication",
+            _ => throw new ArgumentOutOfRangeException(nameof(purpose))
+        };
+
+        await using var command = new NpgsqlCommand("""
+            UPDATE webauthn_challenges
+            SET consumed_at = NOW()
+            WHERE id = @id
+              AND purpose = @purpose
+              AND account_id IS NOT DISTINCT FROM @account
+              AND consumed_at IS NULL
+              AND expires_at > NOW()
+            RETURNING id, account_id, purpose, ceremony_options::text
+            """, connection, transaction);
+        command.Parameters.AddWithValue("id", ceremonyId);
+        command.Parameters.AddWithValue("purpose", purposeValue);
+        command.Parameters.AddWithValue("account", NpgsqlDbType.Uuid, (object?)accountId ?? DBNull.Value);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+            return null;
+
+        return new StoredWebAuthnCeremony(
+            reader.GetGuid(0),
+            reader.IsDBNull(1) ? null : reader.GetGuid(1),
+            purpose,
+            reader.GetString(3));
+    }
+
     public async Task<StoredWebAuthnCeremony?> ConsumeAsync(
         byte[] challenge,
         CancellationToken cancellationToken = default)

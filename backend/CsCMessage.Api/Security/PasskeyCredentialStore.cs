@@ -80,6 +80,29 @@ public sealed class PasskeyCredentialStore(NpgsqlDataSource dataSource)
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
     }
 
+    /// <summary>
+    /// Checks credential-ID availability globally, including revoked records.
+    /// The schema keeps credential IDs unique permanently to prevent re-enrollment
+    /// of a credential that was previously bound to another account.
+    /// </summary>
+    public async Task<bool> IsCredentialIdAvailableAsync(
+        byte[] credentialId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(credentialId);
+        if (credentialId.Length is < 1 or > 1024)
+            return false;
+
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("""
+            SELECT NOT EXISTS (
+                SELECT 1 FROM passkey_credentials WHERE credential_id = @credential
+            )
+            """, connection);
+        command.Parameters.AddWithValue("credential", NpgsqlDbType.Bytea, credentialId);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+    }
+
     public async Task<StoredPasskeyCredential?> GetByCredentialIdAsync(
         byte[] credentialId,
         CancellationToken cancellationToken = default)

@@ -164,6 +164,18 @@ try
     var firstEnrollmentOptions = JsonSerializer.Serialize(new { challenge = Convert.ToBase64String(firstEnrollmentChallenge), rpId = "localhost" });
     var firstEnrollmentId = await ceremonyStore.CreateAsync(
         null, WebAuthnCeremonyPurpose.FirstAccountEnrollment, firstEnrollmentChallenge, firstEnrollmentOptions);
+    var pendingFirstEnrollment = await ceremonyStore.GetPendingAsync(
+        firstEnrollmentId, WebAuthnCeremonyPurpose.FirstAccountEnrollment, null);
+    if (pendingFirstEnrollment is null ||
+        pendingFirstEnrollment.Id != firstEnrollmentId ||
+        pendingFirstEnrollment.AccountId is not null ||
+        pendingFirstEnrollment.Purpose != WebAuthnCeremonyPurpose.FirstAccountEnrollment ||
+        !pendingFirstEnrollment.OptionsJson.Contains(Convert.ToBase64String(firstEnrollmentChallenge), StringComparison.Ordinal))
+        throw new Exception("Pending first-enrollment options could not be retrieved by their scoped ceremony ID.");
+    if (await ceremonyStore.GetPendingAsync(
+        firstEnrollmentId, WebAuthnCeremonyPurpose.FirstAccountEnrollment, accountId) is not null)
+        throw new Exception("A first-enrollment ceremony was returned for the wrong account scope.");
+
     var concurrentConsumption = await Task.WhenAll(
         ceremonyStore.ConsumeAsync(firstEnrollmentChallenge),
         ceremonyStore.ConsumeAsync(firstEnrollmentChallenge));
@@ -176,13 +188,18 @@ try
 
     var rollbackChallenge = RandomNumberGenerator.GetBytes(32);
     var rollbackOptions = JsonSerializer.Serialize(new { challenge = Convert.ToBase64String(rollbackChallenge), rpId = "localhost" });
-    await ceremonyStore.CreateAsync(null, WebAuthnCeremonyPurpose.FirstAccountEnrollment, rollbackChallenge, rollbackOptions);
+    var rollbackCeremonyId = await ceremonyStore.CreateAsync(
+        null, WebAuthnCeremonyPurpose.FirstAccountEnrollment, rollbackChallenge, rollbackOptions);
     var rollbackAccountId = Guid.NewGuid();
     await using (var rollbackConnection = await dataSource.OpenConnectionAsync())
     await using (var transaction = await rollbackConnection.BeginTransactionAsync())
     {
         var consumedInTransaction = await ceremonyStore.ConsumeAsync(
-            rollbackChallenge, rollbackConnection, transaction);
+            rollbackCeremonyId,
+            WebAuthnCeremonyPurpose.FirstAccountEnrollment,
+            null,
+            rollbackConnection,
+            transaction);
         if (consumedInTransaction?.Purpose != WebAuthnCeremonyPurpose.FirstAccountEnrollment)
             throw new Exception("The enrollment challenge was not consumed inside the caller transaction.");
 
