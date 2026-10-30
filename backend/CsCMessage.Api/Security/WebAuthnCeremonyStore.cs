@@ -51,6 +51,13 @@ public sealed class WebAuthnCeremonyStore(NpgsqlDataSource dataSource)
             _ => throw new ArgumentOutOfRangeException(nameof(purpose))
         };
 
+        // Keep anonymous first-account enrollment distinct from account-bound
+        // registration and authentication ceremonies.
+        if (purpose == WebAuthnCeremonyPurpose.FirstAccountEnrollment && accountId is not null)
+            throw new ArgumentException("First-account enrollment ceremonies must not be bound to an existing account.", nameof(accountId));
+        if (purpose != WebAuthnCeremonyPurpose.FirstAccountEnrollment && accountId is null)
+            throw new ArgumentException("Registration and authentication ceremonies must be bound to an account.", nameof(accountId));
+
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand("""
             INSERT INTO webauthn_challenges

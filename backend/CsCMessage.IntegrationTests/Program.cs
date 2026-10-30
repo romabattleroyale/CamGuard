@@ -100,6 +100,20 @@ try
     var ceremonyChallenge = RandomNumberGenerator.GetBytes(32);
     var ceremonyOptions = JsonSerializer.Serialize(new { challenge = Convert.ToBase64String(ceremonyChallenge), rpId = "localhost" });
     var ceremonyStore = new WebAuthnCeremonyStore(dataSource);
+
+    await AssertThrowsAsync<ArgumentException>(
+        () => ceremonyStore.CreateAsync(accountId, WebAuthnCeremonyPurpose.FirstAccountEnrollment,
+            RandomNumberGenerator.GetBytes(32), ceremonyOptions),
+        "First-account enrollment accepted an existing account binding.");
+    await AssertThrowsAsync<ArgumentException>(
+        () => ceremonyStore.CreateAsync(null, WebAuthnCeremonyPurpose.Registration,
+            RandomNumberGenerator.GetBytes(32), ceremonyOptions),
+        "Account registration accepted a missing account binding.");
+    await AssertThrowsAsync<ArgumentException>(
+        () => ceremonyStore.CreateAsync(null, WebAuthnCeremonyPurpose.Authentication,
+            RandomNumberGenerator.GetBytes(32), ceremonyOptions),
+        "Authentication accepted a missing account binding.");
+
     var ceremonyId = await ceremonyStore.CreateAsync(
         accountId, WebAuthnCeremonyPurpose.Registration, ceremonyChallenge, ceremonyOptions);
 
@@ -233,4 +247,19 @@ finally
     await using var command = new NpgsqlCommand("DELETE FROM accounts WHERE id = @account", cleanup);
     command.Parameters.AddWithValue("account", accountId);
     await command.ExecuteNonQueryAsync();
+}
+
+static async Task AssertThrowsAsync<TException>(Func<Task> action, string failureMessage)
+    where TException : Exception
+{
+    try
+    {
+        await action();
+    }
+    catch (TException)
+    {
+        return;
+    }
+
+    throw new Exception(failureMessage);
 }
