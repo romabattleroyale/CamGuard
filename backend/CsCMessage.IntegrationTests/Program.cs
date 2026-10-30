@@ -114,6 +114,38 @@ try
             RandomNumberGenerator.GetBytes(32), ceremonyOptions),
         "Authentication accepted a missing account binding.");
 
+    // Repeat the scope checks at the database boundary: bypassing the C# store
+    // must not allow an anonymous bootstrap ceremony to claim an existing account,
+    // nor an account-bound flow to omit its owner.
+    await AssertCheckViolationAsync(async () =>
+    {
+        await using var connection = await dataSource.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand("""
+            INSERT INTO webauthn_challenges
+                (id, account_id, purpose, challenge_hash, ceremony_options, created_at, expires_at)
+            VALUES
+                (@id, @account, 'first_enrollment', @hash, '{}'::jsonb, NOW(), NOW() + INTERVAL '5 minutes')
+            """, connection);
+        command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("account", accountId);
+        command.Parameters.AddWithValue("hash", NpgsqlDbType.Bytea, RandomNumberGenerator.GetBytes(32));
+        await command.ExecuteNonQueryAsync();
+    }, "Database accepted a first-enrollment challenge bound to an existing account.");
+
+    await AssertCheckViolationAsync(async () =>
+    {
+        await using var connection = await dataSource.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand("""
+            INSERT INTO webauthn_challenges
+                (id, account_id, purpose, challenge_hash, ceremony_options, created_at, expires_at)
+            VALUES
+                (@id, NULL, 'registration', @hash, '{}'::jsonb, NOW(), NOW() + INTERVAL '5 minutes')
+            """, connection);
+        command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("hash", NpgsqlDbType.Bytea, RandomNumberGenerator.GetBytes(32));
+        await command.ExecuteNonQueryAsync();
+    }, "Database accepted a registration challenge without an account owner.");
+
     var ceremonyId = await ceremonyStore.CreateAsync(
         accountId, WebAuthnCeremonyPurpose.Registration, ceremonyChallenge, ceremonyOptions);
 
@@ -257,6 +289,20 @@ static async Task AssertThrowsAsync<TException>(Func<Task> action, string failur
         await action();
     }
     catch (TException)
+    {
+        return;
+    }
+
+    throw new Exception(failureMessage);
+}
+
+static async Task AssertCheckViolationAsync(Func<Task> action, string failureMessage)
+{
+    try
+    {
+        await action();
+    }
+    catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.CheckViolation)
     {
         return;
     }
