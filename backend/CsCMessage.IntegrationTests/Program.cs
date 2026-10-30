@@ -149,7 +149,7 @@ try
     var ceremonyId = await ceremonyStore.CreateAsync(
         accountId, WebAuthnCeremonyPurpose.Registration, ceremonyChallenge, ceremonyOptions);
 
-    var consumedCeremony = await ConsumeCeremonyAsync(ceremonyStore, ceremonyId, WebAuthnCeremonyPurpose.Registration, accountId);
+    var consumedCeremony = await ConsumeCeremonyAsync(dataSource, ceremonyStore, ceremonyId, WebAuthnCeremonyPurpose.Registration, accountId);
     if (consumedCeremony is null ||
         consumedCeremony.Id != ceremonyId ||
         consumedCeremony.AccountId != accountId ||
@@ -157,7 +157,7 @@ try
         !consumedCeremony.OptionsJson.Contains(Convert.ToBase64String(ceremonyChallenge), StringComparison.Ordinal))
         throw new Exception("WebAuthn ceremony state was not persisted and returned correctly.");
 
-    if (await ConsumeCeremonyAsync(ceremonyStore, ceremonyId, WebAuthnCeremonyPurpose.Registration, accountId) is not null)
+    if (await ConsumeCeremonyAsync(dataSource, ceremonyStore, ceremonyId, WebAuthnCeremonyPurpose.Registration, accountId) is not null)
         throw new Exception("A WebAuthn challenge was accepted more than once.");
 
     var firstEnrollmentChallenge = RandomNumberGenerator.GetBytes(32);
@@ -177,8 +177,8 @@ try
         throw new Exception("A first-enrollment ceremony was returned for the wrong account scope.");
 
     var concurrentConsumption = await Task.WhenAll(
-        ConsumeCeremonyAsync(ceremonyStore, firstEnrollmentId, WebAuthnCeremonyPurpose.FirstAccountEnrollment, null),
-        ConsumeCeremonyAsync(ceremonyStore, firstEnrollmentId, WebAuthnCeremonyPurpose.FirstAccountEnrollment, null));
+        ConsumeCeremonyAsync(dataSource, ceremonyStore, firstEnrollmentId, WebAuthnCeremonyPurpose.FirstAccountEnrollment, null),
+        ConsumeCeremonyAsync(dataSource, ceremonyStore, firstEnrollmentId, WebAuthnCeremonyPurpose.FirstAccountEnrollment, null));
     if (concurrentConsumption.Count(item => item is not null) != 1 ||
         concurrentConsumption.Single(item => item is not null) is not { } firstEnrollment ||
         firstEnrollment.Id != firstEnrollmentId ||
@@ -219,7 +219,7 @@ try
             throw new Exception("A partially-created account survived enrollment rollback.");
     }
 
-    if (await ConsumeCeremonyAsync(ceremonyStore, rollbackCeremonyId, WebAuthnCeremonyPurpose.FirstAccountEnrollment, null) is null)
+    if (await ConsumeCeremonyAsync(dataSource, ceremonyStore, rollbackCeremonyId, WebAuthnCeremonyPurpose.FirstAccountEnrollment, null) is null)
         throw new Exception("Challenge consumption was not rolled back with the failed account transaction.");
 
     var expiredChallenge = RandomNumberGenerator.GetBytes(32);
@@ -233,7 +233,7 @@ try
         await command.ExecuteNonQueryAsync();
     }
 
-    if (await ConsumeCeremonyAsync(ceremonyStore, expiredCeremonyId, WebAuthnCeremonyPurpose.Authentication, accountId) is not null)
+    if (await ConsumeCeremonyAsync(dataSource, ceremonyStore, expiredCeremonyId, WebAuthnCeremonyPurpose.Authentication, accountId) is not null)
         throw new Exception("An expired WebAuthn challenge was accepted.");
 
     await ceremonyStore.DeleteExpiredAsync();
@@ -313,13 +313,13 @@ finally
 }
 
 static async Task<StoredWebAuthnCeremony?> ConsumeCeremonyAsync(
+    NpgsqlDataSource dataSource,
     WebAuthnCeremonyStore store,
     Guid ceremonyId,
     WebAuthnCeremonyPurpose purpose,
     Guid? accountId)
 {
-    await using var connection = await NpgsqlDataSource.Create(
-        Environment.GetEnvironmentVariable("ConnectionStrings__CsCMessage")!).OpenConnectionAsync();
+    await using var connection = await dataSource.OpenConnectionAsync();
     await using var transaction = await connection.BeginTransactionAsync();
     var consumed = await store.ConsumeAsync(
         ceremonyId, purpose, accountId, connection, transaction);
