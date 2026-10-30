@@ -2,7 +2,7 @@ name: CsCMessage CI
 
 on:
   push:
-    branches: [main, cscmessage/rebuild]
+    branches: [main]
   pull_request:
     branches: [main]
 
