@@ -6,6 +6,14 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHealthChecks();
 
+builder.Services.Configure<TwilioVerifyOptions>(
+    builder.Configuration.GetSection(TwilioVerifyOptions.SectionName));
+builder.Services.AddHttpClient<IPhoneVerificationProvider, TwilioVerifyPhoneProvider>(client =>
+{
+    client.BaseAddress = new Uri("https://verify.twilio.com");
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+
 var connectionString = builder.Configuration.GetConnectionString("CsCMessage");
 if (!string.IsNullOrWhiteSpace(connectionString))
 {
