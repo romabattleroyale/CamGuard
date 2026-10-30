@@ -23,7 +23,7 @@ for migration in backend/database/migrations/*.sql; do
 done
 ```
 
-The schema stores opaque account/device identifiers, public identity/pre-key material, and device-bound refresh-token hashes. It deliberately has no columns for passwords, private keys, plaintext messages, attachment names, or message bodies.
+The schema stores opaque account/device identifiers, public identity/pre-key material, device-bound refresh-token hashes, and WebAuthn public credential records/challenge digests. It deliberately has no columns for passwords, private keys, plaintext messages, attachment names, or message bodies.
 
 ## Refresh-session implementation
 The internal `RefreshSessionStore` currently:
@@ -35,6 +35,16 @@ The internal `RefreshSessionStore` currently:
 - Supports revoking all sessions belonging to a device.
 
 The store is not exposed as an HTTP endpoint. Login, password/passkey verification, access-token issuance, authorization middleware, rate limiting, and operational abuse controls remain unimplemented. Do not expose refresh routes until those controls and concurrency tests are complete.
+
+## Passkey schema (implementation pending)
+
+Migration `003_webauthn_passkeys.sql` adds:
+- `passkey_credentials`: credential ID, validated public COSE key, opaque user handle, signature counter, transports, optional AAGUID, display label and revocation timestamps.
+- `webauthn_challenges`: SHA-256 challenge digests, purpose, expiry and single-use consumption state.
+
+The schema does not implement WebAuthn registration or sign-in endpoints. Before enabling them, integrate a maintained WebAuthn relying-party library, pin the dependency, and validate the exact production RP ID/origin configuration. Registration must require an already authenticated and authorized account session; authentication challenges must be single-use, short-lived, bound to the intended ceremony, and consumed atomically. Enforce per-account credential limits and display-name bounds. Never log raw challenges, attestation/assertion payloads, credential secrets, or authorization headers. The WebAuthn library must validate challenge, origin, RP ID hash, user presence/verification policy, signature and credential ownership; do not implement these checks manually.
+
+Microsoft's ASP.NET Core 10 passkey guidance describes the registration/attestation and authentication/assertion ceremonies and warns that custom implementations must protect ceremony state. See [Microsoft's passkey security guidance](https://learn.microsoft.com/aspnet/core/security/authentication/passkeys?view=aspnetcore-10.0). The selected library and its compatibility with browser, Android and iOS flows still require a dedicated review.
 
 ## Security boundary
 Do not add plaintext message persistence, plaintext logging, server-side decryption, or message-send endpoints before the audited client E2EE integration is ready. See [the architecture decision](../docs/security/SECURE_BACKEND_ARCHITECTURE.md).
