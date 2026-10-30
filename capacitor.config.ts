@@ -4,7 +4,6 @@ const config: CapacitorConfig = {
   appId: 'com.cscmessage.app',
   appName: 'CsCMessage',
   webDir: 'dist',
-  bundledWebRuntime: false,
   android: { backgroundColor: '#080d1b' },
   ios: { contentInset: 'automatic' }
 };
