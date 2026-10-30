@@ -21,6 +21,14 @@ test('mobile navigation, search and conversation composer work', async ({ page }
   await page.getByPlaceholder(/Scrivi un messaggio/i).fill('Ciao da Playwright');
   await page.getByRole('button', { name: /Invia messaggio/i }).click();
   await expect(page.getByText('Ciao da Playwright')).toBeVisible();
+  await page.getByRole('button', { name: /Reagisci a: Ciao da Playwright/i }).click();
+  await expect(page.getByText('❤️')).toBeVisible();
+  await page.getByRole('button', { name: /Rispondi a: Ciao da Playwright/i }).click();
+  await expect(page.getByText('Risposta a')).toBeVisible();
+  await page.getByPlaceholder(/Scrivi un messaggio/i).fill('Ricevuto!');
+  await page.getByRole('button', { name: /Invia messaggio/i }).click();
+  await expect(page.getByText('Ciao da Playwright').last()).toBeVisible();
+  await expect(page.getByText('Ricevuto!')).toBeVisible();
   await page.screenshot({ path: 'test-results/cscmessage-mobile-chat.png', fullPage: true });
 });
 
