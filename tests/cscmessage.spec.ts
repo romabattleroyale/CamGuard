@@ -29,6 +29,7 @@ test('mobile navigation, search and conversation composer work', async ({ page }
   await page.getByRole('button', { name: /Invia messaggio/i }).click();
   await expect(page.getByText('Ciao da Playwright').last()).toBeVisible();
   await expect(page.getByText('Ricevuto!')).toBeVisible();
+  await expect(page.getByText('Ricevuto!')).toBeInViewport();
   await page.screenshot({ path: 'test-results/cscmessage-mobile-chat.png', fullPage: true });
 });
 
