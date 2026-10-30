@@ -6,9 +6,9 @@ var app = builder.Build();
 
 app.Use(async (context, next) =>
 {
-    context.Response.Headers.XContentTypeOptions = "nosniff";
-    context.Response.Headers.ReferrerPolicy = "no-referrer";
-    context.Response.Headers.XFrameOptions = "DENY";
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
     await next();
 });
 
@@ -16,4 +16,4 @@ app.MapHealthChecks("/health/live");
 
 app.Run();
 
-public partial class Program;
+public partial class Program { }
