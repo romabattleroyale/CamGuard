@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using CsCMessage.Api.Security;
 using Npgsql;
 using NpgsqlTypes;
@@ -97,7 +98,7 @@ try
         throw new Exception("Non-ASCII refresh token input was not rejected.");
 
     var ceremonyChallenge = RandomNumberGenerator.GetBytes(32);
-    var ceremonyOptions = $"""{"challenge":"{{Convert.ToBase64String(ceremonyChallenge)}}","rpId":"localhost"}""";
+    var ceremonyOptions = JsonSerializer.Serialize(new { challenge = Convert.ToBase64String(ceremonyChallenge), rpId = "localhost" });
     var ceremonyStore = new WebAuthnCeremonyStore(dataSource);
     var ceremonyId = await ceremonyStore.CreateAsync(
         accountId, WebAuthnCeremonyPurpose.Registration, ceremonyChallenge, ceremonyOptions);
