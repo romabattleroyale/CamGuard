@@ -1,5 +1,5 @@
 {
-  "name": "savora",
+  "name": "cscmessage",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -10,25 +10,26 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "recipes:generate": "tsx scripts/generate-recipes.ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "screenshots": "playwright test --project=chromium"
+    "screenshots": "playwright test --project=chromium",
+    "android:sync": "npm run build && cap sync android",
+    "android:debug": "npm run android:sync && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/core": "^7.4.3",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
-    "dotenv": "^17.2.3",
     "express": "^4.21.2",
-    "jsqr": "^1.4.0",
     "lucide-react": "^0.468.0",
-    "motion": "^12.23.24",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "tailwindcss": "^4.3.3",
     "vite": "^6.2.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.4.3",
     "@playwright/test": "^1.56.1",
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.10",
