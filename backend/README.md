@@ -36,15 +36,25 @@ The internal `RefreshSessionStore` currently:
 
 The store is not exposed as an HTTP endpoint. Login, password/passkey verification, access-token issuance, authorization middleware, rate limiting, and operational abuse controls remain unimplemented. Do not expose refresh routes until those controls and concurrency tests are complete.
 
-## Passkey schema (implementation pending)
+## Passkey storage and WebAuthn status
 
 Migration `003_webauthn_passkeys.sql` adds:
-- `passkey_credentials`: credential ID, validated public COSE key, opaque user handle, signature counter, transports, optional AAGUID, display label and revocation timestamps.
-- `webauthn_challenges`: SHA-256 challenge digests, short-lived serialized relying-party ceremony options, purpose, expiry and single-use consumption state. The serialized options include the nonce sent to the browser so the WebAuthn library can verify the response; treat this as sensitive transient authentication state and never log it.
+- `passkey_credentials`: credential ID, public COSE key, opaque user handle, signature counter, transports, optional AAGUID, display label and revocation timestamps.
+- `webauthn_challenges`: SHA-256 challenge digests, short-lived serialized relying-party ceremony options, purpose, expiry and single-use consumption state.
 
-The API now includes the maintained `Fido2.AspNet` relying-party library and validates relying-party configuration at startup. `WebAuthnCeremonyStore` persists short-lived serialized options and challenge digests, consumes challenges atomically once, rejects expired/replayed ceremonies, and supports expiry cleanup. Configure `Fido2:ServerDomain`, `Fido2:ServerName`, and `Fido2:Origins` (HTTPS only) before enabling any ceremony. The schema, dependency and ceremony-state store do not yet implement WebAuthn registration or sign-in endpoints; those must be built around the library's `RequestNewCredential` / `MakeNewCredentialAsync` and `GetAssertionOptions` / `MakeAssertionAsync` validation APIs, with credential ownership callbacks and transactional counter updates. Before enabling them, integrate a maintained WebAuthn relying-party library, pin the dependency, and validate the exact production RP ID/origin configuration. Registration must require an already authenticated and authorized account session; authentication challenges must be single-use, short-lived, bound to the intended ceremony, and consumed atomically. Enforce per-account credential limits and display-name bounds. Never log raw challenges, attestation/assertion payloads, credential secrets, or authorization headers. The WebAuthn library must validate challenge, origin, RP ID hash, user presence/verification policy, signature and credential ownership; do not implement these checks manually.
+The API references the maintained `Fido2.AspNet` 4.3.2 relying-party library and validates relying-party configuration at startup. Configure `Fido2:ServerDomain`, `Fido2:ServerName`, and `Fido2:Origins` (HTTPS only) before enabling any ceremony.
 
-Microsoft's ASP.NET Core 10 passkey guidance describes the registration/attestation and authentication/assertion ceremonies and warns that custom implementations must protect ceremony state. See [Microsoft's passkey security guidance](https://learn.microsoft.com/aspnet/core/security/authentication/passkeys?view=aspnetcore-10.0). The selected library and its compatibility with browser, Android and iOS flows still require a dedicated review.
+Internal stores now provide:
+- `WebAuthnCeremonyStore`: persists short-lived options and challenge digests, atomically consumes each challenge once, rejects expired/replayed ceremonies, and supports expiry cleanup.
+- `PasskeyCredentialStore`: stores public credential material only, rejects duplicate credential IDs, looks up credentials by ID/user handle, performs compare-and-swap signature-counter updates, and scopes revocation to the owning account.
+
+The FIDO2 library must validate challenge, origin, RP ID hash, user presence/verification policy, signature and credential ownership. Do not implement these checks manually. Counter updates must be applied only after successful library verification; the compare-and-swap store method prevents stale concurrent writes. Authenticators that do not expose a signature counter may report zero.
+
+**No WebAuthn registration or sign-in HTTP endpoints are implemented yet.** The stores and dependency are groundwork only. Do not expose endpoints until account authentication and authorization exist: registration must require an already authenticated account session, while authentication challenges must be short-lived, purpose-bound, single-use and consumed atomically. The credential ownership callback must check the account/user-handle relationship. Enforce per-account credential limits and display-name bounds. Never log raw challenges, attestation/assertion payloads, credential secrets, or authorization headers.
+
+The selected library's browser, Android and iOS integration still requires a dedicated compatibility review. Use the exact `RequestNewCredential` / `MakeNewCredentialAsync` and `GetAssertionOptions` / `MakeAssertionAsync` validation APIs; do not accept client-supplied public keys or counters without successful relying-party verification.
+
+See [Microsoft's passkey security guidance](https://learn.microsoft.com/aspnet/core/security/authentication/passkeys?view=aspnetcore-10.0) and the [FIDO2 .NET library](https://github.com/passwordless-lib/fido2-net-lib).
 
 ## Security boundary
 Do not add plaintext message persistence, plaintext logging, server-side decryption, or message-send endpoints before the audited client E2EE integration is ready. See [the architecture decision](../docs/security/SECURE_BACKEND_ARCHITECTURE.md).
