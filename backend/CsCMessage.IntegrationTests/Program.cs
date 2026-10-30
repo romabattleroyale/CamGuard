@@ -278,6 +278,18 @@ try
     if (await passkeyStore.TryUpdateCounterAsync(credentialId, 4, 0))
         throw new Exception("A previously advancing passkey counter was allowed to reset to zero.");
 
+    // Authenticators without a signature counter legitimately report zero on every assertion.
+    var zeroCounterCredentialId = RandomNumberGenerator.GetBytes(32);
+    var zeroCounterUserHandle = RandomNumberGenerator.GetBytes(32);
+    if (!await passkeyStore.AddAsync(
+        accountId, zeroCounterCredentialId, publicKey, zeroCounterUserHandle, 0,
+        ["internal"], aaGuid, "Autenticatore senza contatore"))
+        throw new Exception("A zero-counter passkey credential was not stored.");
+    if (!await passkeyStore.TryUpdateCounterAsync(zeroCounterCredentialId, 0, 0))
+        throw new Exception("An authenticator with an unsupported signature counter was rejected.");
+    if (!await passkeyStore.TryUpdateCounterAsync(zeroCounterCredentialId, 0, 1))
+        throw new Exception("A zero-counter authenticator could not begin reporting an advancing counter.");
+
     var updatedPasskey = await passkeyStore.GetByCredentialIdAsync(credentialId);
     if (updatedPasskey?.SignatureCounter != 4 || updatedPasskey.LastUsedAt is null)
         throw new Exception("Passkey counter update did not persist atomically.");
