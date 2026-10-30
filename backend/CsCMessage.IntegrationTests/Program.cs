@@ -119,7 +119,7 @@ try
         accountId, WebAuthnCeremonyPurpose.Authentication, expiredChallenge, ceremonyOptions);
     await using (var expire = await dataSource.OpenConnectionAsync())
     await using (var command = new NpgsqlCommand(
-        "UPDATE webauthn_challenges SET expires_at = NOW() - INTERVAL '1 second' WHERE id = @id", expire))
+        "UPDATE webauthn_challenges SET created_at = NOW() - INTERVAL '2 seconds', expires_at = NOW() - INTERVAL '1 second' WHERE id = @id", expire))
     {
         command.Parameters.AddWithValue("id", expiredCeremonyId);
         await command.ExecuteNonQueryAsync();
