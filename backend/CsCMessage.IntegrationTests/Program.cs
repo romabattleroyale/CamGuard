@@ -275,6 +275,8 @@ try
         throw new Exception("A stale concurrent passkey counter update was accepted.");
     if (await passkeyStore.TryUpdateCounterAsync(credentialId, 4, 2))
         throw new Exception("A decreasing passkey signature counter was accepted.");
+    if (await passkeyStore.TryUpdateCounterAsync(credentialId, 4, 0))
+        throw new Exception("A previously advancing passkey counter was allowed to reset to zero.");
 
     var updatedPasskey = await passkeyStore.GetByCredentialIdAsync(credentialId);
     if (updatedPasskey?.SignatureCounter != 4 || updatedPasskey.LastUsedAt is null)

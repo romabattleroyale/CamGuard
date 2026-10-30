@@ -169,7 +169,7 @@ public sealed class PasskeyCredentialStore(NpgsqlDataSource dataSource)
             WHERE credential_id = @credential
               AND revoked_at IS NULL
               AND signature_counter = @expected
-              AND (@next = 0 OR @next > signature_counter)
+              AND ((signature_counter = 0 AND @next = 0) OR @next > signature_counter)
             """, connection);
         command.Parameters.AddWithValue("credential", NpgsqlDbType.Bytea, credentialId);
         command.Parameters.AddWithValue("expected", (long)expectedCounter);
