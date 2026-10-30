@@ -53,6 +53,10 @@ jobs:
           END
           $check$;
           SQL
+      - name: Test refresh token rotation against PostgreSQL
+        env:
+          ConnectionStrings__CsCMessage: Host=localhost;Port=5432;Database=cscmessage_test;Username=cscmessage;Password=cscmessage_test
+        run: dotnet run --project backend/CsCMessage.IntegrationTests/CsCMessage.IntegrationTests.csproj --configuration Release
       - name: Smoke test API liveness endpoint
         shell: bash
         run: |
