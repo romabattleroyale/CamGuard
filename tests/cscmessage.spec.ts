@@ -6,6 +6,8 @@ test('CsCMessage inbox renders and captures desktop screenshot', async ({ page }
   await expect(page).toHaveTitle(/CsCMessage/);
   await expect(page.getByRole('heading', { name: /Le connessioni/i })).toBeVisible();
   await expect(page.getByText('Sofia Rossi')).toBeVisible();
+  await expect(page.getByText('Anteprima locale')).toBeVisible();
+  await expect(page.getByText('Messaggi demo, non inviati')).toBeVisible();
   await page.screenshot({ path: 'test-results/cscmessage-desktop.png', fullPage: true });
 });
 
@@ -71,4 +73,26 @@ test('CsC AI opens as an explicit opt-in preview', async ({ page }, testInfo) =>
   await page.goto('/');
   await page.getByRole('button', { name: /Apri CsC AI/i }).click();
   await expect(page.getByRole('heading', { name: /Chiedi a CsC AI/i })).toBeVisible();
+});
+
+
+test('compact Android layout keeps navigation and composer usable', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto('/');
+  await expect(page.locator('.mobile-bottom')).toBeVisible();
+  await expect(page.locator('.mobile-bottom button')).toHaveCount(5);
+  const noHorizontalOverflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth <= window.innerWidth
+  );
+  expect(noHorizontalOverflow).toBeTruthy();
+
+  await page.getByRole('button', { name: /Sofia Rossi/i }).click();
+  await expect(page.getByPlaceholder(/Scrivi un messaggio/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Invia messaggio/i })).toBeInViewport();
+  const conversationOverflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth <= window.innerWidth
+  );
+  expect(conversationOverflow).toBeTruthy();
+
+  await page.screenshot({ path: 'test-results/cscmessage-android-compact.png', fullPage: true });
 });
