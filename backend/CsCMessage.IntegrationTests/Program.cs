@@ -96,7 +96,40 @@ try
     if (invalidEncoding.Status != RefreshRotationStatus.Invalid)
         throw new Exception("Non-ASCII refresh token input was not rejected.");
 
-    Console.WriteLine("PASS: token hashing, rotation, replay-family revocation, concurrent refresh race and strict token encoding.");
+    var ceremonyChallenge = RandomNumberGenerator.GetBytes(32);
+    var ceremonyOptions = $"""{"challenge":"{{Convert.ToBase64String(ceremonyChallenge)}}","rpId":"localhost"}""";
+    var ceremonyStore = new WebAuthnCeremonyStore(dataSource);
+    var ceremonyId = await ceremonyStore.CreateAsync(
+        accountId, WebAuthnCeremonyPurpose.Registration, ceremonyChallenge, ceremonyOptions);
+
+    var consumedCeremony = await ceremonyStore.ConsumeAsync(ceremonyChallenge);
+    if (consumedCeremony is null ||
+        consumedCeremony.Id != ceremonyId ||
+        consumedCeremony.AccountId != accountId ||
+        consumedCeremony.Purpose != WebAuthnCeremonyPurpose.Registration ||
+        !consumedCeremony.OptionsJson.Contains(Convert.ToBase64String(ceremonyChallenge), StringComparison.Ordinal))
+        throw new Exception("WebAuthn ceremony state was not persisted and returned correctly.");
+
+    if (await ceremonyStore.ConsumeAsync(ceremonyChallenge) is not null)
+        throw new Exception("A WebAuthn challenge was accepted more than once.");
+
+    var expiredChallenge = RandomNumberGenerator.GetBytes(32);
+    var expiredCeremonyId = await ceremonyStore.CreateAsync(
+        accountId, WebAuthnCeremonyPurpose.Authentication, expiredChallenge, ceremonyOptions);
+    await using (var expire = await dataSource.OpenConnectionAsync())
+    await using (var command = new NpgsqlCommand(
+        "UPDATE webauthn_challenges SET expires_at = NOW() - INTERVAL '1 second' WHERE id = @id", expire))
+    {
+        command.Parameters.AddWithValue("id", expiredCeremonyId);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    if (await ceremonyStore.ConsumeAsync(expiredChallenge) is not null)
+        throw new Exception("An expired WebAuthn challenge was accepted.");
+
+    await ceremonyStore.DeleteExpiredAsync();
+
+    Console.WriteLine("PASS: refresh-token lifecycle and WebAuthn ceremony persistence, expiry and single-use consumption.");
 }
 finally
 {
