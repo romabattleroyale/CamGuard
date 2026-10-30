@@ -1,4 +1,5 @@
 using CsCMessage.Api.Security;
+using Fido2;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,6 +11,35 @@ if (!string.IsNullOrWhiteSpace(connectionString))
 {
     builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(connectionString));
     builder.Services.AddScoped<RefreshSessionStore>();
+}
+
+var relyingPartyDomain = builder.Configuration["Fido2:ServerDomain"];
+var relyingPartyName = builder.Configuration["Fido2:ServerName"];
+var relyingPartyOrigins = builder.Configuration.GetSection("Fido2:Origins").Get<string[]>();
+
+var hasAnyRelyingPartySetting =
+    !string.IsNullOrWhiteSpace(relyingPartyDomain) ||
+    !string.IsNullOrWhiteSpace(relyingPartyName) ||
+    relyingPartyOrigins is { Length: > 0 };
+
+if (hasAnyRelyingPartySetting)
+{
+    if (string.IsNullOrWhiteSpace(relyingPartyDomain) ||
+        string.IsNullOrWhiteSpace(relyingPartyName) ||
+        relyingPartyOrigins is not { Length: > 0 } ||
+        relyingPartyOrigins.Any(origin => !Uri.TryCreate(origin, UriKind.Absolute, out var uri) ||
+                                          uri.Scheme != Uri.UriSchemeHttps))
+    {
+        throw new InvalidOperationException(
+            "WebAuthn requires Fido2:ServerDomain, Fido2:ServerName and one or more HTTPS Fido2:Origins.");
+    }
+
+    builder.Services.AddFido2(options =>
+    {
+        options.ServerDomain = relyingPartyDomain;
+        options.ServerName = relyingPartyName;
+        options.Origins = relyingPartyOrigins.ToHashSet(StringComparer.OrdinalIgnoreCase);
+    });
 }
 
 var app = builder.Build();
