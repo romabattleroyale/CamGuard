@@ -38,6 +38,12 @@ The store is not exposed as an HTTP endpoint. Login, password/passkey verificati
 
 ## Passkey storage and WebAuthn status
 
+The internal first-account flow now has two non-HTTP building blocks:
+- `FirstAccountEnrollmentOptionsFactory` generates a random opaque user handle and FIDO2 passkey options with a discoverable credential and required user verification, then stores the original short-lived ceremony options server-side.
+- `FirstAccountPasskeyVerifier` reloads those server-owned options and asks Fido2NetLib to validate the attestation response and global credential-ID uniqueness. It returns an internal verified-result type that cannot be constructed from request data.
+
+These services do not create an account/device, issue a session, or expose routes. Physical authenticator testing and the device-key proof/Signal Protocol integration are still required before a transactional enrollment service or public endpoint can be enabled.
+
 Migration `003_webauthn_passkeys.sql` adds:
 - `passkey_credentials`: credential ID, public COSE key, opaque user handle, signature counter, transports, optional AAGUID, display label and revocation timestamps.
 - `webauthn_challenges`: SHA-256 challenge digests, short-lived serialized relying-party ceremony options, purpose, expiry and single-use consumption state.

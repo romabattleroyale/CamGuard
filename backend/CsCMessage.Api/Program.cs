@@ -44,7 +44,10 @@ if (hasAnyRelyingPartySetting)
     });
 
     if (!string.IsNullOrWhiteSpace(connectionString))
+    {
+        builder.Services.AddScoped<FirstAccountEnrollmentOptionsFactory>();
         builder.Services.AddScoped<FirstAccountPasskeyVerifier>();
+    }
 }
 
 var app = builder.Build();
