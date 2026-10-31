@@ -22,7 +22,7 @@ test('CsCMessage inbox renders and captures a true desktop screenshot', async ({
 });
 
 test('mobile navigation, search and conversation composer work', async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 390, height: 915 });
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
   await expect(page.getByRole('button', { name: /Chat/i }).last()).toBeVisible();
   await page.getByPlaceholder(/Cerca persone/i).fill('Sofia');
@@ -30,6 +30,11 @@ test('mobile navigation, search and conversation composer work', async ({ page }
   await expect(page.getByText('Gruppo Viaggio')).toHaveCount(0);
   await page.getByRole('button', { name: /Sofia Rossi/i }).click();
   await expect(page.getByPlaceholder(/Scrivi un messaggio/i)).toBeVisible();
+  await expect(page.getByText(/Ehi! Hai visto le foto del weekend/i)).toBeVisible();
+  await expect(page.getByText(/Assolutamente! Organizz/i)).toBeVisible();
+  if (testInfo.project.name === 'mobile-chromium') {
+    await page.screenshot({ path: 'test-results/cscmessage-mobile-chat.png', fullPage: true });
+  }
   await page.getByPlaceholder(/Scrivi un messaggio/i).fill('Ciao da Playwright');
   await page.getByRole('button', { name: /Invia messaggio/i }).click();
   await expect(page.getByText('Ciao da Playwright')).toBeVisible();
@@ -83,9 +88,6 @@ test('mobile navigation, search and conversation composer work', async ({ page }
   await expect(page.locator('.composer')).toBeInViewport();
   await expect(page.locator('.mobile-bottom')).toBeVisible();
 
-  if (testInfo.project.name === 'mobile-chromium') {
-    await page.screenshot({ path: 'test-results/cscmessage-mobile-chat.png', fullPage: true });
-  }
 });
 
 test('CsC AI opens as an explicit opt-in preview', async ({ page }, testInfo) => {
