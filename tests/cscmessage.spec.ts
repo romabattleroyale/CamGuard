@@ -22,7 +22,7 @@ test('CsCMessage inbox renders and captures a true desktop screenshot', async ({
 });
 
 test('mobile navigation, search and conversation composer work', async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 390, height: 915 });
   await page.goto('/');
   await expect(page.getByRole('button', { name: /Chat/i }).last()).toBeVisible();
   await page.getByPlaceholder(/Cerca persone/i).fill('Sofia');
