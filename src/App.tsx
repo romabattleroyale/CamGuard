@@ -1,150 +1,106 @@
-import React, { useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Search, SlidersHorizontal, Heart, Clock3, Users, ChefHat, Sparkles, ShoppingBasket,
-  CalendarDays, Bookmark, ArrowRight, Plus, Minus, Check, ChevronDown, Flame, Leaf,
-  MessageCircle, Send, X, Menu, Home, Compass, BookOpen, UserRound, Utensils, WandSparkles
+  MessageCircle, Phone, Users, Sparkles, Compass, Search, Plus, MoreHorizontal,
+  Video, Send, Paperclip, Mic, Smile, ArrowLeft, CheckCheck, Image, FileText,
+  CalendarDays, Globe2, ShieldCheck, Settings, Bell, Moon, Sun, ChevronRight,
+  CircleHelp, MapPin, Radio, X, Hash, Heart, Zap, LockKeyhole, Languages
 } from 'lucide-react';
 
-type Recipe = {
-  id: number; title: string; subtitle: string; image: string; time: number; difficulty: string;
-  category: string; rating: string; author: string; servings: number; tags: string[];
-};
-
-const recipes: Recipe[] = [
-  { id: 1, title: 'Spaghetti cremosi al limone', subtitle: 'Freschi, profumati, irresistibilmente vellutati', image: 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=1200&q=85', time: 20, difficulty: 'Facile', category: 'Primi', rating: '4.9', author: 'Giulia R.', servings: 2, tags: ['Vegetariano', 'Veloce'] },
-  { id: 2, title: 'Bowl mediterranea', subtitle: 'Verdure di stagione, ceci croccanti e tahina', image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=1200&q=85', time: 25, difficulty: 'Facile', category: 'Vegetariano', rating: '4.8', author: 'Marco F.', servings: 2, tags: ['Vegetariano', 'Healthy'] },
-  { id: 3, title: 'Gnocchi al pomodoro arrosto', subtitle: 'Il comfort food della domenica, in ogni giorno', image: 'https://images.unsplash.com/photo-1473093295043-cdd812d0e601?auto=format&fit=crop&w=1200&q=85', time: 35, difficulty: 'Media', category: 'Primi', rating: '5.0', author: 'Elena C.', servings: 4, tags: ['Comfort food', 'Vegetariano'] },
-  { id: 4, title: 'Salmone glassato al miele', subtitle: 'Crosta lucida, cuore tenero, erbe fresche', image: 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?auto=format&fit=crop&w=1200&q=85', time: 30, difficulty: 'Facile', category: 'Secondi', rating: '4.9', author: 'Luca P.', servings: 2, tags: ['Ricco di proteine'] },
-  { id: 5, title: 'Pancake soffici ai frutti rossi', subtitle: 'Una colazione lenta che sa di weekend', image: 'https://images.unsplash.com/photo-1528207776546-365bb710ee93?auto=format&fit=crop&w=1200&q=85', time: 18, difficulty: 'Facile', category: 'Colazioni', rating: '4.8', author: 'Sara M.', servings: 3, tags: ['Colazione', 'Dolce'] },
-  { id: 6, title: 'Tiramisù classico', subtitle: 'Crema setosa, caffè intenso, cacao amaro', image: 'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?auto=format&fit=crop&w=1200&q=85', time: 40, difficulty: 'Media', category: 'Dolci', rating: '5.0', author: 'Nonna Ada', servings: 6, tags: ['Tradizione', 'Da preparare prima'] },
+type Tab = 'chat' | 'calls' | 'spaces' | 'activity' | 'profile';
+type Chat = { id:number; name:string; initials:string; color:string; preview:string; time:string; unread:number; online:boolean; pinned?:boolean; };
+type ChatMessage = { from:'me'|'them'; text:string; time:string; replyTo?:string; reaction?:string; attachment?:{name:string;type:string;size:number;preview?:string} };
+const initialChats:Chat[] = [
+  {id:1,name:'Sofia Rossi',initials:'SR',color:'violet',preview:'Hai visto le foto del weekend? ✨',time:'09:41',unread:2,online:true,pinned:true},
+  {id:2,name:'Gruppo Viaggio',initials:'GV',color:'blue',preview:'Marco: ho trovato un hotel fantastico',time:'09:32',unread:5,online:false},
+  {id:3,name:'Mamma ❤️',initials:'MA',color:'coral',preview:'Ti ho mandato una posizione',time:'08:56',unread:0,online:true},
+  {id:4,name:'Lavoro Team',initials:'LT',color:'mint',preview:'Elena: riunione spostata alle 11',time:'Ieri',unread:0,online:false},
+  {id:5,name:'Andrea Bianchi',initials:'AB',color:'gold',preview:'🎙 Messaggio vocale (0:18)',time:'Ieri',unread:0,online:false},
+  {id:6,name:'Eventi Roma',initials:'ER',color:'pink',preview:'Nuovo evento vicino a te',time:'Lun',unread:0,online:false}
 ];
-const categories = ['Tutte', 'Primi', 'Secondi', 'Vegetariano', 'Colazioni', 'Dolci'];
+const stories = [{name:'La tua storia',initials:'+',color:'add'},{name:'Sofia',initials:'SR',color:'violet'},{name:'Marco',initials:'MF',color:'blue'},{name:'Giulia',initials:'GR',color:'coral'},{name:'Viaggi',initials:'✦',color:'mint'},{name:'Luca',initials:'LB',color:'gold'}];
 
-function Brand() {
-  return <a className="brand" href="#" aria-label="Savora home"><span className="brand-mark"><Utensils size={19} strokeWidth={1.8}/></span><span>SAVORA<span className="brand-dot">.</span></span></a>;
+function Brand(){return <div className="brand"><span className="brand-symbol"><MessageCircle size={21}/><i/></span><span>CsC<span>Message</span></span></div>}
+function Avatar({initials,color='blue',online=false,size='normal'}:{initials:string;color?:string;online?:boolean;size?:string}){return <div className={`avatar ${color} ${size}`}>{initials}{online&&<i className="online-dot"/>}</div>}
+
+export default function App(){
+ const [tab,setTab]=useState<Tab>('chat');
+ const [chats,setChats]=useState(initialChats);
+ const [selected,setSelected]=useState<number|null>(null);
+ const [search,setSearch]=useState('');
+ const [message,setMessage]=useState('');
+ const [attachment,setAttachment]=useState<File|null>(null);
+ const [attachmentPreview,setAttachmentPreview]=useState<string|null>(null);
+ const attachmentInputRef=useRef<HTMLInputElement|null>(null);
+ const [replyTo,setReplyTo]=useState<string|null>(null);
+ const [dark,setDark]=useState(true);
+ const [showNew,setShowNew]=useState(false);
+ const [showAi,setShowAi]=useState(false);
+ const [aiPrompt,setAiPrompt]=useState('');
+ const [aiAnswer,setAiAnswer]=useState('');
+ const [notice,setNotice]=useState('');
+ const messageAreaRef=useRef<HTMLDivElement|null>(null);
+ const active=chats.find(c=>c.id===selected);
+ const [thread,setThread]=useState<Record<number,ChatMessage[]>>({
+  1:[{from:'them',text:'Ehi! Hai visto le foto del weekend? ✨',time:'09:38'},{from:'me',text:'Sì, sono bellissime! Dobbiamo rifarlo presto.',time:'09:39'},{from:'them',text:'Assolutamente! Organizziamo qualcosa per il prossimo mese?',time:'09:41'}],
+  2:[{from:'them',text:'Ho trovato un hotel fantastico vicino al mare!',time:'09:32'}]
+ });
+ useEffect(()=>{const area=messageAreaRef.current;if(area)area.scrollTop=area.scrollHeight},[selected,thread]);
+ const filtered=useMemo(()=>chats.filter(c=>c.name.toLowerCase().includes(search.toLowerCase())||c.preview.toLowerCase().includes(search.toLowerCase())),[chats,search]);
+ function formatFileSize(bytes:number){if(bytes<1024)return `${bytes} B`;if(bytes<1024*1024)return `${(bytes/1024).toFixed(0)} KB`;return `${(bytes/(1024*1024)).toFixed(1)} MB`}
+ function handleAttachment(file:File|null){
+  if(!file)return;
+  const maxSize=10*1024*1024;
+  const extension=file.name.split('.').pop()?.toLowerCase()||'';
+  const allowedExtensions=['jpg','jpeg','png','webp','gif','pdf','doc','docx','txt'];
+  const allowedMimeTypes=['image/jpeg','image/png','image/webp','image/gif','application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','text/plain'];
+  if(!allowedExtensions.includes(extension)&&!allowedMimeTypes.includes(file.type)){toast('Formato non supportato. Usa immagini, PDF, Word o TXT.');if(attachmentInputRef.current)attachmentInputRef.current.value='';return}
+  if(file.size>maxSize){toast('Il file supera il limite di 10 MB.');if(attachmentInputRef.current)attachmentInputRef.current.value='';return}
+  setAttachment(file);setAttachmentPreview(null);
+  if(file.type.startsWith('image/')||['jpg','jpeg','png','webp','gif'].includes(extension)){
+   const reader=new FileReader();
+   reader.onload=()=>setAttachmentPreview(typeof reader.result==='string'?reader.result:null);
+   reader.onerror=()=>toast('Impossibile creare l’anteprima di questa immagine.');
+   reader.readAsDataURL(file);
+  }
+ }
+ function send(){const selectedId=selected;if((!message.trim()&&!attachment)||selectedId===null)return;const text=message.trim();const item:ChatMessage={from:'me',text,time:new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}),...(replyTo?{replyTo}:{}),...(attachment?{attachment:{name:attachment.name,type:attachment.type,size:attachment.size,...(attachmentPreview?{preview:attachmentPreview}:{})}}:{})};setThread(t=>({...t,[selectedId]:[...(t[selectedId]||[]),item]}));setReplyTo(null);setChats(cs=>cs.map(c=>c.id===selectedId?{...c,preview:text||`📎 ${attachment?.name||'Allegato'}`,time:'Ora'}:c));setMessage('');setAttachment(null);setAttachmentPreview(null);if(attachmentInputRef.current)attachmentInputRef.current.value=''}
+ function toast(t:string){setNotice(t);window.setTimeout(()=>setNotice(''),2600)}
+ function createChat(){const c:Chat={id:Date.now(),name:'Nuova conversazione',initials:'NC',color:'mint',preview:'Nessun messaggio',time:'Ora',unread:0,online:false};setChats([c,...chats]);setSelected(c.id);setShowNew(false);setTab('chat')}
+ return <div className={`app-shell ${dark?'dark':'light'}`}>
+  <aside className="sidebar">
+   <Brand/><button className="compose-button" onClick={()=>setShowNew(true)}><Plus size={18}/> Nuova chat</button>
+   <div className="side-label">WORKSPACE</div>
+   <nav className="side-nav">
+    <button className={tab==='chat'?'active':''} onClick={()=>{setTab('chat');setSelected(null)}}><MessageCircle/>Chat <b className="nav-count">7</b></button>
+    <button className={tab==='calls'?'active':''} onClick={()=>setTab('calls')}><Phone/>Chiamate</button>
+    <button className={tab==='spaces'?'active':''} onClick={()=>setTab('spaces')}><Users/>Spaces <span className="new-pill">NEW</span></button>
+    <button className={tab==='activity'?'active':''} onClick={()=>setTab('activity')}><Compass/>Attività</button>
+   </nav>
+   <div className="side-label side-label-spaced">PERSONALE</div>
+   <button className={tab==='profile'?'profile-nav active':'profile-nav'} onClick={()=>setTab('profile')}><Avatar initials="CR" color="violet"/><span><b>Carlo Rossi</b><small>Il tuo profilo</small></span><Settings size={16}/></button>
+   <div className="sidebar-bottom"><div className="secure-note"><ShieldCheck size={17}/><span><b>Anteprima locale</b><small>Messaggi demo, non inviati</small></span></div><button className="theme-toggle" onClick={()=>setDark(!dark)}>{dark?<Sun size={16}/>:<Moon size={16}/>} {dark?'Modalità chiara':'Modalità scura'}</button><small className="version">CsCMessage · Preview 0.1</small></div>
+  </aside>
+  <main className="main-area">
+   <header className="topbar"><div className="mobile-brand"><Brand/></div><div className="breadcrumb"><span>Workspace</span><ChevronRight size={14}/><b>{tab==='chat'?'Messaggi':tab==='calls'?'Chiamate':tab==='spaces'?'Spaces':tab==='activity'?'Attività':'Profilo'}</b></div><div className="top-actions"><button className="icon-btn" aria-label="Aiuto" onClick={()=>toast('Centro assistenza in arrivo')}><CircleHelp/></button><button className="icon-btn notification" aria-label="Notifiche" onClick={()=>setTab('activity')}><Bell/><i/></button><Avatar initials="CR" color="violet"/></div></header>
+   {tab==='chat'&&!selected&&<section className="inbox-page">
+    <div className="welcome-row"><div><div className="eyebrow"><span className="pulse"/> IL TUO SPAZIO, LE TUE PERSONE</div><h1>Le connessioni<br/><em>contano.</em></h1><p>Tutto quello che conta, in una conversazione.</p></div><div className="date-chip"><span>VENERDÌ</span><b>30 OTT</b></div></div>
+    <button className="ai-banner" onClick={()=>setShowAi(true)}><div className="ai-orb"><Sparkles size={25}/></div><div className="ai-copy"><span>IL TUO ASSISTENTE INTELLIGENTE</span><b>Le tue conversazioni, <em>in una nuova dimensione.</em></b><small>Riassumi, traduci e organizza. Solo quando lo chiedi tu.</small></div><span className="ai-cta">Apri CsC AI <ChevronRight size={16}/></span></button>
+    <div className="section-head"><div><h2>Storie <span>•</span></h2><p>Momenti condivisi dalle tue persone</p></div><button className="text-action" onClick={()=>toast('Creazione storia in arrivo')}><Plus size={16}/> Aggiungi</button></div>
+    <div className="stories">{stories.map((s,i)=><button className="story" key={s.name} onClick={()=>toast(i===0?'Crea la tua prima storia':'Storia di '+s.name)}><div className={`story-ring ${s.color}`}><Avatar initials={s.initials} color={s.color}/>{i===0&&<i className="story-plus">+</i>}</div><span>{s.name}</span></button>)}</div>
+    <div className="section-head chats-heading"><div><h2>Messaggi <span className="live-tag">LIVE</span></h2><p>Le tue conversazioni recenti</p></div><button className="icon-btn search-mobile" onClick={()=>document.getElementById('chat-search')?.focus()}><Search/></button></div>
+    <div className="search-box"><Search size={18}/><input id="chat-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cerca persone, messaggi o contenuti..."/><kbd>⌘ K</kbd></div>
+    <div className="chat-list">{filtered.map(c=><button className="chat-row" key={c.id} onClick={()=>setSelected(c.id)}><Avatar initials={c.initials} color={c.color} online={c.online}/><span className="chat-info"><b>{c.name}{c.pinned&&<span className="pin">PIN</span>}</b><small>{c.preview}</small></span><span className="chat-meta"><small>{c.time}</small>{c.unread>0&&<b className="unread">{c.unread}</b>}</span><ChevronRight className="row-arrow" size={16}/></button>)}{filtered.length===0&&<div className="empty-state">Nessuna conversazione trovata.</div>}</div>
+   </section>}
+   {tab==='chat'&&selected&&active&&<section className="conversation-page"><div className="conversation-head"><button className="back-btn" onClick={()=>setSelected(null)}><ArrowLeft/></button><Avatar initials={active.initials} color={active.color} online={active.online}/><div className="person-title"><b>{active.name}</b><small>{active.online?'Online adesso':'Ultimo accesso di recente'}</small></div><div className="conversation-actions"><button className="icon-btn" onClick={()=>toast('Chiamata audio: demo interfaccia')}><Phone/></button><button className="icon-btn" onClick={()=>toast('Videochiamata: demo interfaccia')}><Video/></button><button className="icon-btn" onClick={()=>toast('Dettagli conversazione')}><MoreHorizontal/></button></div></div><div className="message-area" ref={messageAreaRef}><div className="day-divider"><span>OGGI</span></div>{(thread[selected]||[]).map((m,i)=><div className={`message-line ${m.from}`} key={i}><div className="bubble">{m.replyTo&&<div className="reply-quote"><small>In risposta a</small><span>{m.replyTo}</span></div>}{m.attachment&&<div className="message-attachment">{m.attachment.preview?<div className="image-attachment"><img src={m.attachment.preview} alt={m.attachment.name}/><small className="image-attachment-meta">{m.attachment.name} · {formatFileSize(m.attachment.size)}</small></div>:<div className="file-attachment"><FileText size={20}/><span><b>{m.attachment.name}</b><small>{m.attachment.type||'Documento'} · {formatFileSize(m.attachment.size)}</small></span></div>}</div>}{m.text&&<div>{m.text}</div>}<small>{m.time} {m.from==='me'&&<CheckCheck size={13}/>}</small><div className="message-tools"><button type="button" aria-label={`Rispondi a: ${m.text}`} onClick={()=>setReplyTo(m.text)}>↩ Rispondi</button><button type="button" aria-label={`Reagisci a: ${m.text}`} onClick={()=>setThread(t=>({...t,[selected]:(t[selected]||[]).map((item,index)=>index===i?{...item,reaction:item.reaction?'':'❤️'}:item)}))}>{m.reaction||'♡'}</button></div></div></div>)}</div>{attachment&&<div className="attachment-preview">{attachmentPreview?<img src={attachmentPreview} alt="Anteprima allegato"/>:<FileText size={20}/>}<span><b>{attachment.name}</b><small>{attachment.type||'Documento'} · {formatFileSize(attachment.size)} · Pronto per l’invio</small></span><button type="button" aria-label="Rimuovi allegato" onClick={()=>{setAttachment(null);setAttachmentPreview(null);if(attachmentInputRef.current)attachmentInputRef.current.value=''}}>×</button></div>}<form className="composer" onSubmit={e=>{e.preventDefault();send()}}>{replyTo&&<div className="reply-preview"><span><b>Risposta a</b>{replyTo}</span><button type="button" aria-label="Annulla risposta" onClick={()=>setReplyTo(null)}>×</button></div>}<input ref={attachmentInputRef} className="visually-hidden-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.txt" aria-label="Seleziona allegato" onChange={e=>handleAttachment(e.target.files?.[0]||null)}/><button type="button" className="icon-btn" aria-label="Allega file" onClick={()=>attachmentInputRef.current?.click()}><Paperclip/></button><input value={message} onChange={e=>setMessage(e.target.value)} placeholder="Scrivi un messaggio..." aria-label="Scrivi un messaggio"/><button type="button" className="icon-btn" onClick={()=>toast('Messaggio vocale: demo interfaccia')}><Mic/></button><button className="send-btn" type="submit" aria-label="Invia messaggio"><Send size={18}/></button></form></section>}
+   {tab==='calls'&&<section className="generic-page"><div className="eyebrow">SEMPRE VICINI</div><h1>Le tue <em>chiamate.</em></h1><p>Voce e video, senza perdere il filo.</p><div className="feature-grid"><article><div className="feature-icon blue"><Phone/></div><h3>Chiamate audio</h3><p>Parla con una persona o crea una chiamata di gruppo.</p><button onClick={()=>toast('La chiamata audio sarà disponibile con il backend WebRTC')}>Avvia chiamata <ChevronRight/></button></article><article><div className="feature-icon violet"><Video/></div><h3>Video HD</h3><p>Ritrova i tuoi amici faccia a faccia, ovunque siano.</p><button onClick={()=>toast('La videochiamata sarà disponibile con il backend WebRTC')}>Avvia video <ChevronRight/></button></article></div><h2>Recenti</h2>{['Sofia Rossi · Ieri, 18:42','Mamma ❤️ · Ieri, 12:10','Gruppo Viaggio · Lunedì, 09:30'].map(x=><div className="simple-row" key={x}><Phone size={17}/>{x}<span>↗</span></div>)}</section>}
+   {tab==='spaces'&&<section className="generic-page"><div className="eyebrow">INSIEME, IN TEMPO REALE</div><h1>Entra nei tuoi <em>Spaces.</em></h1><p>Conversazioni che diventano esperienze condivise.</p><div className="space-card"><div className="space-visual"><div className="space-orbit"><Users size={34}/></div><span>SPAZIO CONDIVISO · 4 PERSONE</span></div><div className="space-body"><div><span className="live-tag">ATTIVO ORA</span><h3>Weekend a Barcellona</h3><p>Organizza il viaggio, vota le idee e condividi tutto in un unico spazio.</p></div><button className="primary-btn" onClick={()=>toast('Space demo: apertura stanza in arrivo')}>Apri Space <ChevronRight/></button></div><div className="space-tools"><span><CheckCheck/> Checklist condivisa</span><span><Users/> 4 partecipanti</span><span><CalendarDays/> 12–16 Aprile</span></div></div><button className="outline-btn" onClick={()=>toast('Creazione Space in arrivo')}><Plus/> Crea un nuovo Space</button></section>}
+   {tab==='activity'&&<section className="generic-page"><div className="eyebrow">TUTTO SOTTO CONTROLLO</div><h1>La tua <em>attività.</em></h1><p>Aggiornamenti importanti, senza rumore.</p><div className="activity-card"><div className="activity-icon violet"><AtIcon/></div><div><b>Sofia ti ha menzionato</b><p>“Carlo, che ne pensi di questa idea?”</p><small>10 minuti fa · Gruppo Viaggio</small></div></div><div className="activity-card"><div className="activity-icon blue"><CalendarDays/></div><div><b>Promemoria in programma</b><p>Riunione con il team alle 11:00.</p><small>Oggi · Calendario</small></div></div><div className="activity-card"><div className="activity-icon mint"><Sparkles/></div><div><b>Il tuo riepilogo è pronto</b><p>Hai 3 conversazioni da riprendere.</p><small>Ieri · CsC AI</small></div></div></section>}
+   {tab==='profile'&&<section className="generic-page"><div className="eyebrow">IL TUO MONDO DIGITALE</div><h1>Il tuo <em>profilo.</em></h1><div className="profile-card"><Avatar initials="CR" color="violet" size="large"/><div><h2>Carlo Rossi</h2><p>@carlo · Disponibile</p></div><button className="outline-btn" onClick={()=>toast('Modifica profilo in arrivo')}>Modifica</button></div><h2>Impostazioni</h2>{[{icon:LockKeyhole,title:'Privacy e sicurezza',desc:'Controlla chi può contattarti'},{icon:Bell,title:'Notifiche',desc:'Suoni, avvisi e priorità'},{icon:Globe2,title:'Lingua e traduzione',desc:'Italiano · Traduzione automatica'},{icon:Settings,title:'Preferenze',desc:'Aspetto e accessibilità'}].map(x=><button className="settings-row" key={x.title} onClick={()=>toast(x.title+' · impostazioni demo')}><x.icon/><span><b>{x.title}</b><small>{x.desc}</small></span><ChevronRight/></button>)}<button className="theme-toggle profile-theme" onClick={()=>setDark(!dark)}>{dark?<Sun/>:<Moon/>}{dark?'Passa alla modalità chiara':'Passa alla modalità scura'}</button></section>}
+  </main>
+  <nav className="mobile-bottom">{([{id:'chat',icon:MessageCircle,label:'Chat'},{id:'calls',icon:Phone,label:'Chiamate'},{id:'spaces',icon:Users,label:'Spaces'},{id:'activity',icon:Compass,label:'Attività'},{id:'profile',icon:Settings,label:'Profilo'}] as const).map(x=><button className={tab===x.id?'active':''} key={x.id} onClick={()=>{setTab(x.id);setSelected(null)}}><x.icon/><span>{x.label}</span></button>)}</nav>
+  {showNew&&<div className="modal-backdrop" onClick={()=>setShowNew(false)}><div className="modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setShowNew(false)}><X/></button><div className="feature-icon blue"><Plus/></div><h2>Nuova conversazione</h2><p>Inizia a creare una nuova connessione.</p><input placeholder="Nome o username" aria-label="Nome o username"/><button className="primary-btn modal-action" onClick={createChat}>Crea conversazione <ChevronRight/></button></div></div>}
+  {showAi&&<div className="modal-backdrop" onClick={()=>setShowAi(false)}><div className="modal ai-modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setShowAi(false)}><X/></button><div className="ai-orb modal-orb"><Sparkles/></div><span className="eyebrow">CS C INTELLIGENCE</span><h2>Chiedi a <em>CsC AI.</em></h2><p>Un assistente che ti aiuta a riassumere, tradurre e organizzare. L'accesso alle conversazioni avviene solo su tua richiesta.</p><div className="ai-suggestions"><button onClick={()=>setAiPrompt('Riassumi le cose importanti da fare oggi')}>✦ Riassumi le cose importanti</button><button onClick={()=>setAiPrompt('Traduci questo messaggio in inglese')}>◎ Traduci un messaggio</button><button onClick={()=>setAiPrompt('Aiutami a organizzare un evento')}>⌁ Organizza un evento</button></div><form className="ai-form" onSubmit={e=>{e.preventDefault();setAiAnswer('Questa anteprima mostra il flusso di CsC AI. Il collegamento al modello e ai dati privati sarà implementato solo con consenso esplicito.')}}><input value={aiPrompt} onChange={e=>setAiPrompt(e.target.value)} placeholder="Chiedi qualcosa a CsC AI..."/><button className="send-btn"><Send/></button></form>{aiAnswer&&<div className="ai-answer">{aiAnswer}</div>}<small className="demo-note">Anteprima locale · Nessun messaggio reale viene letto o inviato</small></div></div>}
+  {notice&&<div className="toast"><Zap size={16}/>{notice}</div>}
+ </div>
 }
-
-function RecipeCard({ recipe, saved, onSave, onOpen }: { recipe: Recipe; saved: boolean; onSave: () => void; onOpen: () => void }) {
-  return <motion.article className="recipe-card" layout initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .3 }}>
-    <button className="card-image-button" onClick={onOpen} aria-label={'Apri ' + recipe.title}>
-      <img className="card-image" src={recipe.image} alt={recipe.title} loading="lazy" />
-      <span className="card-time"><Clock3 size={13}/>{recipe.time} min</span>
-    </button>
-    <button className={'save-button ' + (saved ? 'is-saved' : '')} onClick={onSave} aria-label={saved ? 'Rimuovi dai preferiti' : 'Salva nei preferiti'}><Heart size={17} fill={saved ? 'currentColor' : 'none'}/></button>
-    <div className="recipe-card-body">
-      <div className="card-meta"><span>{recipe.category}</span><span className="rating">★ {recipe.rating}</span></div>
-      <button className="recipe-title-button" onClick={onOpen}><h3>{recipe.title}</h3></button>
-      <p>{recipe.subtitle}</p>
-      <div className="card-author"><span className="avatar">{recipe.author.split(' ').map(s => s[0]).join('').slice(0,2)}</span><span>di <b>{recipe.author}</b></span><button onClick={onOpen} className="card-arrow" aria-label="Vedi ricetta"><ArrowRight size={17}/></button></div>
-    </div>
-  </motion.article>;
-}
-
-export default function App() {
-  const [activeCategory, setActiveCategory] = useState('Tutte');
-  const [query, setQuery] = useState('');
-  const [saved, setSaved] = useState<number[]>([2]);
-  const [activeTab, setActiveTab] = useState('Scopri');
-  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
-  const [servings, setServings] = useState(2);
-  const [checkedSteps, setCheckedSteps] = useState<number[]>([]);
-  const [assistantOpen, setAssistantOpen] = useState(false);
-  const [assistantText, setAssistantText] = useState('');
-  const [assistantAnswer, setAssistantAnswer] = useState('');
-  const [mobileMenu, setMobileMenu] = useState(false);
-
-  const filtered = useMemo(() => recipes.filter(r => (activeCategory === 'Tutte' || r.category === activeCategory) &&
-    (r.title + ' ' + r.subtitle + ' ' + r.category + ' ' + r.tags.join(' ')).toLowerCase().includes(query.toLowerCase())), [activeCategory, query]);
-
-  const toggleSaved = (id: number) => setSaved(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  const openRecipe = (recipe: Recipe) => { setSelectedRecipe(recipe); setServings(recipe.servings); setCheckedSteps([]); };
-  const askAssistant = () => {
-    const text = assistantText.trim();
-    if (!text) return;
-    const ingredient = text;
-    const match = recipes.find(r => (r.title + ' ' + r.subtitle + ' ' + r.tags.join(' ')).toLowerCase().includes(ingredient.toLowerCase()));
-    setAssistantAnswer(match
-      ? 'Ti consiglio “' + match.title + '”: si prepara in circa ' + match.time + ' minuti. Apri la ricetta dal ricettario per vedere ingredienti e passaggi.'
-      : 'Partiamo da quello che hai: ' + ingredient + '. Prova a cercare nel ricettario con un ingrediente alla volta oppure scegli una categoria. L’assistente AI completo verrà collegato al servizio di generazione nella prossima fase.');
-  };
-
-  return <div className="app-shell">
-    <header className="topbar">
-      <Brand />
-      <nav className="desktop-nav" aria-label="Navigazione principale">
-        {['Scopri', 'Ricettario', 'Menu settimanale', 'Community'].map(item => <button key={item} className={activeTab === item ? 'nav-link active' : 'nav-link'} onClick={() => { setActiveTab(item); if (item === 'Ricettario') document.getElementById('ricettario')?.scrollIntoView({ behavior: 'smooth' }); }}>{item}</button>)}
-      </nav>
-      <div className="top-actions"><button className="icon-button desktop-only" onClick={() => setAssistantOpen(true)} aria-label="Apri assistente"><Sparkles size={19}/></button><button className="profile-button" onClick={() => setActiveTab('Il mio spazio')}><span className="profile-avatar">C</span><span className="profile-label">Il mio spazio</span><ChevronDown size={15}/></button><button className="icon-button mobile-menu-button" onClick={() => setMobileMenu(v => !v)} aria-label="Apri menu"><Menu size={22}/></button></div>
-    </header>
-    {mobileMenu && <div className="mobile-nav">{['Scopri', 'Ricettario', 'Menu settimanale', 'Community'].map(item => <button key={item} onClick={() => { setActiveTab(item); setMobileMenu(false); }}>{item}</button>)}</div>}
-
-    <main>
-      <section className="hero">
-        <div className="hero-copy">
-          <div className="eyebrow"><span className="eyebrow-line"/> IL PIACERE DI CUCINARE, OGNI GIORNO</div>
-          <h1>Ogni giorno,<br/>un <em>nuovo sapore.</em></h1>
-          <p>Ricette da amare, idee da condividere e piccoli segreti per portare qualcosa di speciale in tavola.</p>
-          <div className="hero-actions"><button className="button-primary" onClick={() => document.getElementById('ricettario')?.scrollIntoView({ behavior: 'smooth' })}>Esplora le ricette <ArrowRight size={17}/></button><button className="button-text" onClick={() => setAssistantOpen(true)}><Sparkles size={16}/> Chiedi a Savora</button></div>
-          <div className="hero-proof"><div className="proof-avatars"><span>G</span><span>M</span><span>A</span><span>+</span></div><div><b>Una cucina, mille idee</b><small>Inizia da quello che hai in frigo.</small></div></div>
-        </div>
-        <div className="hero-visual"><img src="https://images.unsplash.com/photo-1490645935967-10de6ba17061?auto=format&fit=crop&w=1400&q=90" alt="Tavola mediterranea con ingredienti freschi" /><div className="hero-photo-shade"/><div className="hero-note"><span className="note-icon"><Leaf size={17}/></span><div><b>Buono, bello, di stagione</b><small>Idee fresche per la tua cucina</small></div><ArrowRight size={17}/></div><div className="hero-stamp"><span>IL GUSTO</span><b>di casa</b><span>IN OGNI PIATTO</span></div></div>
-      </section>
-
-      <section className="quick-strip" aria-label="Esplora Savora">
-        <button onClick={() => { setActiveCategory('Tutte'); document.getElementById('ricettario')?.scrollIntoView({behavior:'smooth'}); }}><span className="quick-icon olive"><BookOpen size={19}/></span><span><b>Ricette per ogni giorno</b><small>Da provare subito</small></span><ArrowRight size={16}/></button>
-        <button onClick={() => setAssistantOpen(true)}><span className="quick-icon peach"><WandSparkles size={19}/></span><span><b>Il tuo sous-chef AI</b><small>Dimmi cosa hai in frigo</small></span><ArrowRight size={16}/></button>
-        <button onClick={() => setActiveTab('Menu settimanale')}><span className="quick-icon yellow"><CalendarDays size={19}/></span><span><b>Organizza la settimana</b><small>Menu e lista della spesa</small></span><ArrowRight size={16}/></button>
-      </section>
-
-      <section className="section recipe-section" id="ricettario">
-        <div className="section-heading"><div><div className="eyebrow"><span className="eyebrow-line"/> ISPIRAZIONE QUOTIDIANA</div><h2>La tua prossima <em>ricetta preferita.</em></h2><p>Scelte con cura, da portare subito in cucina.</p></div><button className="view-all" onClick={() => { setActiveCategory('Tutte'); setQuery(''); }}>Vedi tutte <ArrowRight size={16}/></button></div>
-        <div className="search-row"><div className="search-box"><Search size={19}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Cerca una ricetta, un ingrediente…" aria-label="Cerca ricette"/>{query && <button onClick={() => setQuery('')} aria-label="Cancella ricerca"><X size={16}/></button>}</div><button className="filter-button" onClick={() => setActiveCategory(activeCategory === 'Tutte' ? 'Vegetariano' : 'Tutte')}><SlidersHorizontal size={17}/><span>Filtri</span></button></div>
-        <div className="category-pills">{categories.map(cat => <button key={cat} className={activeCategory === cat ? 'category-pill active' : 'category-pill'} onClick={() => setActiveCategory(cat)}>{cat}</button>)}</div>
-        {filtered.length ? <div className="recipe-grid">{filtered.map(recipe => <RecipeCard key={recipe.id} recipe={recipe} saved={saved.includes(recipe.id)} onSave={() => toggleSaved(recipe.id)} onOpen={() => openRecipe(recipe)}/>)}</div> : <div className="empty-state"><Search size={28}/><b>Nessuna ricetta trovata</b><span>Prova un altro ingrediente o cambia categoria.</span><button className="button-primary" onClick={() => {setQuery('');setActiveCategory('Tutte');}}>Mostra tutte le ricette</button></div>}
-      </section>
-
-      <section className="assistant-banner">
-        <div className="assistant-art"><div className="assistant-orbit orbit-one"/><div className="assistant-orbit orbit-two"/><div className="assistant-spark"><Sparkles size={31}/></div><div className="ingredient ingredient-one">🍋</div><div className="ingredient ingredient-two">🌿</div><div className="ingredient ingredient-three">🍅</div></div>
-        <div className="assistant-banner-copy"><div className="eyebrow"><span className="eyebrow-line"/> IL TUO AIUTO IN CUCINA</div><h2>Hai qualcosa in frigo.<br/><em>Facciamone magia.</em></h2><p>Scrivi gli ingredienti che hai a disposizione e trova l'ispirazione per il prossimo piatto.</p><button className="button-primary" onClick={() => setAssistantOpen(true)}>Parla con Savora <Sparkles size={17}/></button></div>
-      </section>
-
-      <section className="community-section">
-        <div className="community-copy"><div className="eyebrow"><span className="eyebrow-line"/> LA CUCINA È PIÙ BELLA INSIEME</div><h2>Ricette da condividere.<br/><em>Storie da assaporare.</em></h2><p>Scopri le idee della community, salva le tue preferite e lasciati ispirare da chi ama cucinare come te.</p><button className="button-outline" onClick={() => setActiveTab('Community')}>Entra nella community <ArrowRight size={16}/></button></div>
-        <div className="community-photos"><img className="community-main" src="https://images.unsplash.com/photo-1556761223-4c4282c73f77?auto=format&fit=crop&w=900&q=85" alt="Amici che condividono un pasto"/><img className="community-small" src="https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=700&q=85" alt="Preparazione di una ricetta in cucina"/><div className="community-bubble"><MessageCircle size={17}/><span><b>Una community che ispira</b><small>Ogni piatto racconta qualcosa</small></span></div></div>
-      </section>
-
-      <section className="newsletter"><div className="newsletter-icon"><ChefHat size={25}/></div><div><h3>Una buona idea, ogni settimana.</h3><p>Ricette di stagione, trucchi e ispirazioni direttamente nella tua casella.</p></div><form onSubmit={e => {e.preventDefault(); alert('Grazie! La funzione newsletter sarà attivata quando collegheremo il servizio email.');}}><input type="email" placeholder="La tua email" aria-label="La tua email" required/><button type="submit" aria-label="Iscriviti"><ArrowRight size={18}/></button></form></section>
-    </main>
-
-    <footer className="footer"><Brand/><span>Il gusto di trovare sempre una nuova idea.</span><div><a href="#ricettario">Ricettario</a><button onClick={() => setAssistantOpen(true)}>Assistente AI</button><a href="#top">Torna su ↑</a></div><small>© 2026 Savora · Fatto con amore e un pizzico di curiosità.</small></footer>
-
-    <nav className="mobile-bottom-nav" aria-label="Navigazione mobile">
-      {[{label:'Scopri',icon:Home},{label:'Ricettario',icon:BookOpen},{label:'Assistente',icon:Sparkles},{label:'Salvati',icon:Bookmark}].map(({label,icon:Icon}) => <button key={label} className={activeTab === label ? 'selected' : ''} onClick={() => label === 'Assistente' ? setAssistantOpen(true) : label === 'Salvati' ? setActiveTab('Salvati') : (setActiveTab(label), label === 'Ricettario' && document.getElementById('ricettario')?.scrollIntoView({behavior:'smooth'}))}><Icon size={20}/><span>{label}</span></button>)}
-    </nav>
-
-    <AnimatePresence>
-      {selectedRecipe && <motion.div className="modal-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onMouseDown={e => {if(e.target === e.currentTarget) setSelectedRecipe(null);}}>
-        <motion.div role="dialog" aria-modal="true" aria-label={selectedRecipe.title} className="recipe-modal" initial={{y:24,opacity:0,scale:.98}} animate={{y:0,opacity:1,scale:1}} exit={{y:16,opacity:0}} transition={{duration:.22}}>
-          <button className="modal-close" onClick={() => setSelectedRecipe(null)} aria-label="Chiudi"><X size={20}/></button>
-          <img className="modal-hero" src={selectedRecipe.image} alt={selectedRecipe.title}/>
-          <div className="modal-content"><div className="card-meta"><span>{selectedRecipe.category}</span><span className="rating">★ {selectedRecipe.rating}</span></div><h2>{selectedRecipe.title}</h2><p className="modal-subtitle">{selectedRecipe.subtitle}</p><div className="modal-stats"><span><Clock3 size={16}/>{selectedRecipe.time} min</span><span><Flame size={16}/>{selectedRecipe.difficulty}</span><span><Users size={16}/>{servings} porzioni</span></div>
-            <div className="servings-row"><b>Ingredienti</b><div className="servings-control"><button onClick={() => setServings(v => Math.max(1,v-1))} aria-label="Meno porzioni"><Minus size={14}/></button><span>{servings}</span><button onClick={() => setServings(v => Math.min(20,v+1))} aria-label="Più porzioni"><Plus size={14}/></button></div></div>
-            <ul className="ingredient-list">{(selectedRecipe.id === 1 ? [['Spaghetti', '160 g'],['Limone non trattato','1'],['Parmigiano grattugiato','35 g'],['Olio extravergine','2 cucchiai'],['Basilico fresco','q.b.']] : selectedRecipe.id === 2 ? [['Ceci già cotti','240 g'],['Pomodorini','150 g'],['Cetriolo','1'],['Insalata mista','80 g'],['Tahina e limone','2 cucchiai']] : selectedRecipe.id === 3 ? [['Gnocchi di patate','500 g'],['Pomodori maturi','400 g'],['Aglio','1 spicchio'],['Basilico','q.b.'],['Olio extravergine','2 cucchiai']] : selectedRecipe.id === 4 ? [['Filetti di salmone','2'],['Miele','1 cucchiaio'],['Salsa di soia','1 cucchiaio'],['Limone','½'],['Erbe aromatiche','q.b.']] : selectedRecipe.id === 5 ? [['Farina','180 g'],['Latte','180 ml'],['Uovo','1'],['Lievito per dolci','1 cucchiaino'],['Frutti rossi','120 g']] : [['Mascarpone','500 g'],['Savoiardi','250 g'],['Uova pastorizzate','4'],['Caffè freddo','300 ml'],['Cacao amaro','q.b.']]).map(([name,amount],i) => <li key={name}><span>{name}</span><b>{amount.includes('q.b.') || amount === '1' || amount === '½' ? amount : amount.replace(/[0-9]+/g, n => String(Math.round(Number(n)*servings/selectedRecipe.servings)))}</b></li>)}</ul>
-            <div className="method-heading"><b>Preparazione</b><span>{checkedSteps.length}/3 completati</span></div>
-            {['Prepara tutti gli ingredienti e porta sul piano di lavoro ciò che ti serve. Lava e taglia le verdure o gli aromi indicati.','Cuoci gli ingredienti principali seguendo i tempi indicati, assaggia e regola sale e condimenti. Mantieni la fiamma controllata per valorizzare i sapori.','Impiatta con cura, aggiungi le erbe fresche o la finitura suggerita e servi subito. Buon appetito!'].map((step,i) => <button key={i} className={'method-step '+(checkedSteps.includes(i)?'step-done':'')} onClick={() => setCheckedSteps(prev => prev.includes(i)?prev.filter(x=>x!==i):[...prev,i])}><span className="step-number">{checkedSteps.includes(i)?<Check size={16}/>:String(i+1).padStart(2,'0')}</span><span><b>{['Prepara','Cuoci','Impiatta'][i]}</b><small>{step}</small></span></button>)}
-            <p className="recipe-disclaimer">Nota: questa è una scheda dimostrativa iniziale. Ingredienti e passaggi definitivi andranno verificati ricetta per ricetta prima della pubblicazione.</p>
-            <button className="button-primary full-button" onClick={() => toggleSaved(selectedRecipe.id)}>{saved.includes(selectedRecipe.id)?<Check size={17}/>:<Heart size={17}/>} {saved.includes(selectedRecipe.id)?'Salvata nei preferiti':'Salva la ricetta'}</button>
-          </div>
-        </motion.div>
-      </motion.div>}
-      {assistantOpen && <motion.div className="assistant-drawer-backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onMouseDown={e => {if(e.target===e.currentTarget)setAssistantOpen(false);}}>
-        <motion.aside className="assistant-drawer" initial={{x:420}} animate={{x:0}} exit={{x:420}} transition={{type:'spring',damping:28,stiffness:260}}>
-          <div className="drawer-head"><div className="drawer-mark"><Sparkles size={21}/></div><div><b>Il sous-chef Savora</b><small>Un'idea alla volta, insieme.</small></div><button className="icon-button" onClick={() => setAssistantOpen(false)} aria-label="Chiudi assistente"><X size={20}/></button></div>
-          <div className="assistant-chat"><div className="chat-welcome"><span className="chat-spark"><Sparkles size={24}/></span><h3>Cosa prepariamo oggi?</h3><p>Dimmi cosa hai in frigorifero, quanto tempo hai o che tipo di piatto ti va.</p></div><div className="suggestion-chips">{['Ho pomodori e pasta','Cena pronta in 20 minuti','Qualcosa di vegetariano'].map(s=><button key={s} onClick={()=>setAssistantText(s)}>{s}</button>)}</div>{assistantAnswer && <div className="assistant-response"><Sparkles size={16}/><p>{assistantAnswer}</p></div>}</div>
-          <form className="assistant-input-row" onSubmit={e=>{e.preventDefault();askAssistant();}}><input value={assistantText} onChange={e=>setAssistantText(e.target.value)} placeholder="Es. uova, zucchine, ricotta…" aria-label="Ingredienti o richiesta"/><button type="submit" aria-label="Invia richiesta"><Send size={18}/></button></form><small className="ai-note">Versione iniziale: suggerimenti locali di esempio. Il modello AI e il catalogo completo saranno collegati nella fase backend.</small>
-        </motion.aside>
-      </motion.div>}
-    </AnimatePresence>
-  </div>;
-}
+function AtIcon(){return <Hash size={20}/>}

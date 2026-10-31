@@ -1,0 +1,149 @@
+name: CsCMessage CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cscmessage
+          POSTGRES_PASSWORD: cscmessage_test
+          POSTGRES_DB: cscmessage_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cscmessage -d cscmessage_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet build backend/CsCMessage.Api/CsCMessage.Api.csproj --configuration Release
+      - name: Validate PostgreSQL identity schema
+        env:
+          DATABASE_URL: postgresql://cscmessage:cscmessage_test@localhost:5432/cscmessage_test
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+          for migration in backend/database/migrations/*.sql; do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          for migration in backend/database/migrations/*.sql; do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $check$
+          BEGIN
+            IF (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('accounts','devices','signed_prekeys','one_time_prekeys','device_sessions')) <> 5 THEN
+              RAISE EXCEPTION 'Expected identity tables are missing';
+            END IF;
+            IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND column_name IN ('private_key','private_identity_key','authenticator_private_key','message_body','plaintext')) THEN
+              RAISE EXCEPTION 'Forbidden sensitive column found';
+            END IF;
+          END
+          $check$;
+          SQL
+      - name: Test refresh token rotation against PostgreSQL
+        env:
+          ConnectionStrings__CsCMessage: Host=localhost;Port=5432;Database=cscmessage_test;Username=cscmessage;Password=cscmessage_test
+        run: dotnet run --project backend/CsCMessage.IntegrationTests/CsCMessage.IntegrationTests.csproj --configuration Release
+      - name: Reject incomplete WebAuthn relying-party configuration
+        shell: bash
+        run: |
+          set +e
+          Fido2__ServerDomain=localhost Fido2__ServerName=CsCMessage \
+            dotnet run --no-build --configuration Release --project backend/CsCMessage.Api/CsCMessage.Api.csproj --urls http://127.0.0.1:5081 > /tmp/cscmessage-webauthn-invalid.log 2>&1
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -eq 0 ] || ! grep -q "WebAuthn requires" /tmp/cscmessage-webauthn-invalid.log; then
+            cat /tmp/cscmessage-webauthn-invalid.log
+            echo "Incomplete relying-party configuration was not rejected" >&2
+            exit 1
+          fi
+      - name: Smoke test API liveness endpoint with WebAuthn configured
+        env:
+          Fido2__ServerDomain: localhost
+          Fido2__ServerName: CsCMessage CI
+          Fido2__Origins__0: https://localhost
+        shell: bash
+        run: |
+          dotnet run --no-build --configuration Release --project backend/CsCMessage.Api/CsCMessage.Api.csproj --urls http://127.0.0.1:5080 > /tmp/cscmessage-api.log 2>&1 &
+          API_PID=$!
+          trap 'kill "$API_PID" 2>/dev/null || true' EXIT
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:5080/health/live; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/cscmessage-api.log
+          exit 1
+
+  web-and-playwright:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run lint
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cscmessage-playwright-results
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+
+  android-debug-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Set up Android SDK
+        shell: bash
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT}}"
+          if [ -z "$SDK_ROOT" ]; then
+            echo "Android SDK path was not provided by the runner" >&2
+            exit 1
+          fi
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager was not found under $SDK_ROOT/cmdline-tools" >&2
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+      - run: npm install
+      - run: npm run build
+      - run: npx cap add android
+      - run: npx cap sync android
+      - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cscmessage-android-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
