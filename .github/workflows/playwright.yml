@@ -19,10 +19,37 @@ jobs:
       - run: npm run build
       - run: npm run lint
       - run: npm run test:e2e
+      - name: Verify desktop and mobile screenshot artifacts
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          function dimensions(path) {
+            const png = readFileSync(path);
+            if (png.toString('hex', 0, 8) !== '89504e470d0a1a0a') {
+              throw new Error(`Not a PNG: ${path}`);
+            }
+            return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+          }
+
+          const desktop = dimensions('test-results/cscmessage-desktop-inbox.png');
+          const mobile = dimensions('test-results/cscmessage-mobile-chat.png');
+
+          if (desktop.width < 1280) {
+            throw new Error(`Desktop inbox screenshot is unexpectedly narrow: ${desktop.width}px`);
+          }
+          if (mobile.width >= 1280 || mobile.height <= mobile.width) {
+            throw new Error(`Mobile chat screenshot does not have a mobile portrait size: ${mobile.width}x${mobile.height}`);
+          }
+
+          console.log(`Desktop inbox: ${desktop.width}x${desktop.height}`);
+          console.log(`Mobile chat: ${mobile.width}x${mobile.height}`);
+          NODE
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: savora-playwright-screenshots
+          name: cscmessage-playwright-screenshots
           path: test-results/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 14
